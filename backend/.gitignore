@@ -1,0 +1,8 @@
+node_modules/
+.next/
+*.log
+.dev-credentials.json
+.dev-credentials.txt
+.env.local
+.env.*.local
+uploads/

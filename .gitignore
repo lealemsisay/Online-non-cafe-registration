@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+*.log
+.dev-credentials.json
+.dev-credentials.txt
+DEV_CREDENTIALS.md
+.env.local
+.env.*.local
+uploads/

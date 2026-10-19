@@ -1,0 +1,63 @@
+/// Visit https://pris.ly.e/docs/get-started with your Prisma schema file.
+/// For more info about available fields see:
+/// https://pris.ly.io/docs/reference Prisma Model
+
+generator client {
+  provider = "postgresql"
+  output = "./node_modules/@prisma/client/generator"
+}
+
+model Student {
+  id String @id @default(uuid())
+  studentId String @unique
+  fullName String
+  gender String
+  campus String
+  department String
+  program String
+  yearOfStudy String
+  phone String
+  email String
+  academicYear String
+  isNonCafeteria Student @default(false)
+  registrationStatus String @default("draft")
+  applicationStatus String @default("submitted")
+  deanReview Finding String?
+  deanComments String?
+  superAdminReview Finding String?
+  superAdminComments String?
+  approvalStatus String @default("pending")
+  rejectedAt DateTime?
+  rejectedReason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Campus {
+  id String @id @default(uuid())
+  name String @unique
+  code String
+  deanId String?
+  dean User? @relation(fields: [deanId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AcademicYear {
+  id String @id @default(uuid())
+  year String @unique
+  startDate DateTime
+  endDate DateTime
+  isActive Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id String @id @default(uuid())
+  action String
+  performedBy String
+  targetId String
+  targetType String
+  details String?
+  createdAt DateTime @default(now())
+}
