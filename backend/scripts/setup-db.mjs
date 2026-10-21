@@ -6,9 +6,9 @@ import pg from 'pg'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.join(__dirname, '../.env'), override: true })
 
-let APP_URL = process.env.DATABASE_URL || 'postgresql://postgres:0317@localhost:5432/dilla_university'
+let APP_URL = process.env.DATABASE_URL || 'postgresql://postgres:allah123@localhost:5432/dilla_university'
 if (APP_URL.startsWith('postgresql://postgres@localhost') || APP_URL.startsWith('postgresql://postgres:5432')) {
-  APP_URL = APP_URL.replace('postgresql://postgres@', 'postgresql://postgres:0317@')
+  APP_URL = APP_URL.replace('postgresql://postgres@', 'postgresql://postgres:allah123@')
 }
 const ADMIN_URL = APP_URL.replace(/\/[^/]*$/, '/postgres')
 const DB_NAME = new URL(APP_URL).pathname.slice(1)

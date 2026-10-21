@@ -106,30 +106,30 @@ const SuperAdminDashboard = () => {
         <h1 className="text-2xl font-bold text-dillaNavy">
           Super Admin Dashboard
         </h1>
-        <p className="text-dillaGray">University-wide Administration</p>
+        <p className="text-sm font-medium text-dillaDarkGray">University-wide Administration</p>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-dillaNavy/5 p-4 rounded-lg shadow-sm border-2 border-dillaNavy/30 transition-all duration-200 hover:-translate-y-1 hover:border-dillaNavy hover:shadow-md">
           <p className="text-3xl font-bold text-dillaNavy">{stats.totalRegistered}</p>
-          <p className="text-dillaGray small">Total Registered</p>
+          <p className="text-sm font-medium text-dillaDarkGray">Total Registered</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-dillaTeal/5 p-4 rounded-lg shadow-sm border-2 border-dillaTeal/30 transition-all duration-200 hover:-translate-y-1 hover:border-dillaTeal hover:shadow-md">
           <p className="text-3xl font-bold text-dillaTeal">{stats.totalSubmitted}</p>
-          <p className="text-dillaGray small">Total Submitted</p>
+          <p className="text-sm font-medium text-dillaDarkGray">Total Submitted</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-dillaNavy/5 p-4 rounded-lg shadow-sm border-2 border-dillaNavy/30 transition-all duration-200 hover:-translate-y-1 hover:border-dillaNavy hover:shadow-md">
           <p className="text-3xl font-bold text-dillaNavy">{stats.pendingDeanReview}</p>
-          <p className="text-dillaGray small">Pending Campus Dean Review</p>
+          <p className="text-sm font-medium text-dillaDarkGray">Pending Campus Dean Review</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-purple-50 p-4 rounded-lg shadow-sm border-2 border-purple-600/30 transition-all duration-200 hover:-translate-y-1 hover:border-purple-600 hover:shadow-md">
           <p className="text-3xl font-bold text-purple-600">{stats.pendingSuperAdmin}</p>
-          <p className="text-dillaGray small">Pending Super Admin Approval</p>
+          <p className="text-sm font-medium text-dillaDarkGray">Pending Super Admin Approval</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 mb-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-lg shadow-sm border-2 border-dillaNavy/10">
           <h3 className="text-lg font-medium text-dillaNavy mb-4">Recent Applications</h3>
           <div className="grid grid-cols-1 gap-4">
             {applications
@@ -137,24 +137,26 @@ const SuperAdminDashboard = () => {
               .map((app) => (
                 <div
                   key={app.id}
-                  className="p-4 rounded-lg border border-gray-100 hover:border-dillaGold transition-colors"
+                  className="p-4 rounded-lg border border-dillaTeal/20 bg-dillaTeal/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-dillaTeal hover:shadow-md"
                 >
                   <h3 className="font-medium text-dillaNavy">
                     {app.studentName} ({app.studentId})
                   </h3>
-                  <p className="text-sm text-dillaGray mb-1">
+                  <p className="text-sm text-dillaDarkGray mb-2">
                     {app.department} • {app.campus}
                   </p>
-                  <StatusBadge status={app.status} />
-                  <p className="text-xs text-dillaGray">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={app.status} />
+                    <p className="text-xs font-medium text-dillaDarkGray">
                     {new Date(app.submittedAt).toLocaleDateString()}
-                  </p>
+                    </p>
+                  </div>
                 </div>
               ))}
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-lg shadow-sm border-2 border-dillaTeal/10">
           <h3 className="text-lg font-medium text-dillaNavy mb-4">Filter</h3>
           <Input
             placeholder="Search by Student ID, name, department, or campus"

@@ -112,21 +112,21 @@ const CampusDeanDashboard = () => {
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-dillaNavy/5 p-4 rounded-lg shadow-sm border-2 border-dillaNavy/30 transition-all duration-200 hover:-translate-y-1 hover:border-dillaNavy hover:shadow-md">
           <p className="text-3xl font-bold text-dillaNavy">{stats.totalStudents}</p>
-          <p className="text-dillaGray small">Total Students Registered</p>
+          <p className="text-sm font-medium text-dillaDarkGray">Total Students Registered</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-dillaTeal/5 p-4 rounded-lg shadow-sm border-2 border-dillaTeal/30 transition-all duration-200 hover:-translate-y-1 hover:border-dillaTeal hover:shadow-md">
           <p className="text-3xl font-bold text-dillaTeal">{stats.newApplications}</p>
-          <p className="text-dillaGray small">New Applications</p>
+          <p className="text-sm font-medium text-dillaDarkGray">New Applications</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-dillaNavy/5 p-4 rounded-lg shadow-sm border-2 border-dillaNavy/30 transition-all duration-200 hover:-translate-y-1 hover:border-dillaNavy hover:shadow-md">
           <p className="text-3xl font-bold text-dillaNavy">{stats.pendingReview}</p>
-          <p className="text-dillaGray small">Pending Review</p>
+          <p className="text-sm font-medium text-dillaDarkGray">Pending Review</p>
         </div>
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-green-50 p-4 rounded-lg shadow-sm border-2 border-green-600/30 transition-all duration-200 hover:-translate-y-1 hover:border-green-600 hover:shadow-md">
           <p className="text-3xl font-bold text-green-600">{stats.approved}</p>
-          <p className="text-dillaGray small">Approved</p>
+          <p className="text-sm font-medium text-dillaDarkGray">Approved</p>
         </div>
       </div>
 

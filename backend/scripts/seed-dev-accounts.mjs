@@ -17,9 +17,9 @@ if (process.env.NODE_ENV === 'production') {
   process.exit(1)
 }
 
-let APP_URL = process.env.DATABASE_URL || 'postgresql://postgres:0317@localhost:5432/dilla_university'
+let APP_URL = process.env.DATABASE_URL || 'postgresql://postgres:allah123@localhost:5432/dilla_university'
 if (APP_URL.startsWith('postgresql://postgres@localhost') || APP_URL.startsWith('postgresql://postgres:5432')) {
-  APP_URL = APP_URL.replace('postgresql://postgres@', 'postgresql://postgres:0317@')
+  APP_URL = APP_URL.replace('postgresql://postgres@', 'postgresql://postgres:allah123@')
 }
 
 const { Client } = await import('pg')

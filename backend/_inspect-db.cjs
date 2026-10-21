@@ -1,6 +1,6 @@
 const { Client, Pool } = require('pg')
 
-const PW = process.env.TEST_PW || '0317'
+const PW = process.env.TEST_PW || 'allah123'
 
 async function q(db, sql, params) {
   const c = new Client({ host: '127.0.0.1', port: 5432, user: 'postgres', password: PW, database: db, connectionTimeoutMillis: 5000 })
