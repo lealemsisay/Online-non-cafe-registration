@@ -11,12 +11,20 @@ export default async function handler(req, res) {
 
     const client = await pool.connect()
     try {
-      const result = await client.query('SELECT id, name, code, dean_id AS "dean", status, created_at AS "createdAt" FROM campus ORDER BY name ASC')
+      const result = await client.query(`
+        SELECT c.id, c.name, c.code, c.dean_id AS "deanId", 
+               COALESCE(u.full_name, (SELECT u2.full_name FROM app_user u2 WHERE u2.role = 'dean' AND u2.campus = c.name LIMIT 1)) AS "dean", 
+               c.status, c.created_at AS "createdAt" 
+        FROM campus c 
+        LEFT JOIN app_user u ON c.dean_id = u.id 
+        ORDER BY c.name ASC
+      `)
       const campuses = result.rows.map(c => ({
         id: c.id,
         name: c.name,
         code: c.code,
-        dean: c.dean,
+        dean: c.dean || 'Pending Assignment',
+        deanId: c.deanId,
         status: c.status,
         createdAt: c.createdAt,
       }))

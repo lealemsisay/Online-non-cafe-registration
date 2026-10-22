@@ -19,8 +19,9 @@ import StudentApplicationManagement from '@/pages/super-admin/StudentApplication
 import Reports from '@/pages/super-admin/Reports'
 import Settings from '@/pages/super-admin/Settings'
 
-// Auth page
+// Auth pages
 import LoginPage from '@/pages/auth/Login'
+import StudentRegister from '@/pages/auth/StudentRegister'
 
 // Helper to get active user details from storage
 function getAuthUser() {
@@ -80,7 +81,7 @@ const AppLayout = ({ children }) => {
   const location = useLocation()
   const user = getAuthUser()
 
-  const isLoginPage = location.pathname === '/login'
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
 
   const handleLogout = () => {
     localStorage.removeItem('userRole')
@@ -93,7 +94,7 @@ const AppLayout = ({ children }) => {
     window.location.href = '/login'
   }
 
-  if (isLoginPage) {
+  if (isAuthPage) {
     return <div className="min-h-screen bg-dillaGray">{children}</div>
   }
 
@@ -139,6 +140,14 @@ const App = () => {
               </PublicRoute>
             }
           />
+          <Route
+            path="/register"
+            element={
+              <PublicRoute>
+                <StudentRegister />
+              </PublicRoute>
+            }
+          />
 
           {/* Student routes */}
           <Route path="/" element={<RootRoute />} />
@@ -159,7 +168,7 @@ const App = () => {
             }
           />
           <Route
-            path="/register"
+            path="/student/apply"
             element={
               <ProtectedRoute role="student">
                 <RegisterPage />

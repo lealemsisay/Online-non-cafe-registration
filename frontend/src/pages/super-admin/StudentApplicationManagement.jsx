@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react'
-import { Input } from '@/components/forms'
-import { Button } from '@/components/forms'
+import { Input, Button } from '@/components/forms'
 import { StatusBadge } from '@/components/status/StatusBadge'
 import Icon from '@/components/icons/Icon'
 
 const StudentApplicationManagement = () => {
   const [applications, setApplications] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedFilter, setSelectedFilter] = useState('all')
+  const [selectedCampus, setSelectedCampus] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all')
-
   const [actionMessage, setActionMessage] = useState(null)
+  const [error, setError] = useState(null)
+
+  // View modal state
+  const [viewingApp, setViewingApp] = useState(null)
+
+  // Reset password modal state
+  const [resetTargetStudent, setResetTargetStudent] = useState(null)
+  const [resetPasswordInput, setResetPasswordInput] = useState('Student@Dilla2026!')
 
   const loadApplications = () => {
     const token = localStorage.getItem('token')
@@ -23,60 +29,24 @@ const StudentApplicationManagement = () => {
           id: u.studentId || u.id,
           studentId: u.studentId,
           studentName: u.fullName || u.studentName || 'Student Applicant',
+          gender: u.gender || 'Male',
+          phone: u.phone || '-',
+          email: u.email || '-',
           department: u.department || 'General',
+          program: u.program || 'Regular Degree',
+          yearOfStudy: u.yearOfStudy || '1',
           campus: u.campus || 'Main Campus',
           academicYear: u.academicYear || '2023/2024',
           status: u.applicationStatus || u.status || 'super-admin-review',
           finding: u.deanFinding || 'registered',
-          deanComments: u.deanComments || 'Verified by Dean',
+          deanComments: u.deanComments || 'Verified by Campus Dean',
+          superAdminComments: u.superAdminComments || '',
           submittedAt: u.createdAt || u.submittedAt || new Date().toISOString(),
-          pdfUrl: `/api/documents/${u.studentId || u.id}`,
+          pdfUrl: `/api/documents/upload?id=${u.studentId || u.id}`,
         }))
 
         if (apps.length > 0) {
           setApplications(apps)
-        } else {
-          setApplications([
-            {
-              id: 'DUC2023-001',
-              studentId: 'DUC2023-001',
-              studentName: 'John Kamau',
-              department: 'Computer Science',
-              campus: 'Main Campus',
-              academicYear: '2023/2024',
-              status: 'approved',
-              finding: 'registered',
-              deanComments: 'Verified as registered cost-sharing beneficiary',
-              submittedAt: '2024-01-15',
-              pdfUrl: '/api/documents/1',
-            },
-            {
-              id: 'DUC2023-045',
-              studentId: 'DUC2023-045',
-              studentName: 'Wangari Njuguna',
-              department: 'Business',
-              campus: 'Main Campus',
-              academicYear: '2023/2024',
-              status: 'dean-review',
-              finding: 'not_registered',
-              deanComments: 'PDF verified - student not in cost-sharing registry',
-              submittedAt: '2024-01-20',
-              pdfUrl: '/api/documents/2',
-            },
-            {
-              id: 'DUC2023-078',
-              studentId: 'DUC2023-078',
-              studentName: 'Peter Otieno',
-              department: 'Engineering',
-              campus: 'Kakamega Campus',
-              academicYear: '2023/2024',
-              status: 'dean-review',
-              finding: 'registered',
-              deanComments: 'Under Campus Dean review',
-              submittedAt: '2024-01-22',
-              pdfUrl: '/api/documents/3',
-            },
-          ])
         }
       })
       .catch(() => {})
@@ -84,23 +54,26 @@ const StudentApplicationManagement = () => {
 
   useEffect(() => {
     loadApplications()
-    // Check if query params have action
+    // Handle action from URL query params
     const params = new URLSearchParams(window.location.search)
     const action = params.get('action')
     const id = params.get('id')
     if (action === 'approve' && id) {
-      approveApplication(id)
+      handleFinalDecision(id, 'approved', 'Approved by Super Admin')
     } else if (action === 'reject' && id) {
-      rejectApplication(id)
+      handleFinalDecision(id, 'rejected', 'Rejected by Super Admin')
+    } else if (action === 'return' && id) {
+      handleFinalDecision(id, 'return-for-correction', 'Returned by Super Admin for student correction')
     }
   }, [])
 
-  const viewApplication = (id) => {
-    alert(`Viewing Application: ${id}\nDetails and verification slip available.`)
-  }
-
-  const approveApplication = async (id) => {
+  const handleFinalDecision = async (id, decision, defaultComment = '') => {
+    setActionMessage(null)
+    setError(null)
     const token = localStorage.getItem('token')
+    const comments = window.prompt(`Enter approval comments or reason for ${decision}:`, defaultComment)
+    if (comments === null) return // cancelled
+
     try {
       const res = await fetch('/api/approval/final', {
         method: 'POST',
@@ -110,165 +83,384 @@ const StudentApplicationManagement = () => {
         },
         body: JSON.stringify({
           applicationId: id,
-          decision: 'approved',
-          comments: 'Approved by Super Admin',
+          decision,
+          comments: comments || defaultComment,
         }),
       })
+
+      const data = await res.json()
       if (res.ok) {
-        setActionMessage(`Application ${id} approved successfully!`)
+        setActionMessage(`Application '${id}' updated to '${decision}' successfully!`)
         setApplications((prev) =>
-          prev.map((a) => (a.id === id || a.studentId === id ? { ...a, status: 'approved' } : a))
+          prev.map((a) =>
+            a.id === id || a.studentId === id
+              ? { ...a, status: decision, superAdminComments: comments }
+              : a
+          )
         )
+        if (viewingApp && (viewingApp.id === id || viewingApp.studentId === id)) {
+          setViewingApp(null)
+        }
       } else {
-        const err = await res.json()
-        setActionMessage(`Error: ${err.message || 'Failed to approve application'}`)
+        setError(data.message || `Failed to process ${decision}`)
       }
     } catch (e) {
-      setActionMessage(`Network error approving application ${id}`)
+      setError(`Network error processing decision for application ${id}`)
     }
   }
 
-  const rejectApplication = async (id) => {
+  const handleResetStudentPassword = async () => {
+    if (!resetTargetStudent) return
+    setError(null)
+    setActionMessage(null)
     const token = localStorage.getItem('token')
+
     try {
-      const res = await fetch('/api/approval/final', {
+      const res = await fetch('/api/users/reset-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          applicationId: id,
-          decision: 'rejected',
-          comments: 'Rejected by Super Admin',
+          userId: resetTargetStudent.studentId || resetTargetStudent.id,
+          targetUsername: resetTargetStudent.studentId,
+          newPassword: resetPasswordInput.trim() || 'Student@Dilla2026!',
         }),
       })
+
+      const data = await res.json()
       if (res.ok) {
-        setActionMessage(`Application ${id} rejected.`)
-        setApplications((prev) =>
-          prev.map((a) => (a.id === id || a.studentId === id ? { ...a, status: 'rejected' } : a))
+        setActionMessage(
+          `Password for student '${resetTargetStudent.studentName}' (${resetTargetStudent.studentId}) reset successfully! New Password: ${data.resetPassword}`
         )
+        setResetTargetStudent(null)
       } else {
-        const err = await res.json()
-        setActionMessage(`Error: ${err.message || 'Failed to reject application'}`)
+        setError(data.message || 'Failed to reset student password')
       }
     } catch (e) {
-      setActionMessage(`Network error rejecting application ${id}`)
+      setError('Network error while resetting password.')
     }
   }
 
-  const returnForCorrection = (id) => {
-    setActionMessage(`Application ${id} flagged for student correction.`)
-    setApplications((prev) =>
-      prev.map((a) => (a.id === id || a.studentId === id ? { ...a, status: 'return-for-correction' } : a))
-    )
-  }
+  const filteredApplications = applications.filter((app) => {
+    const matchesSearch =
+      app.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      app.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (app.department && app.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (app.campus && app.campus.toLowerCase().includes(searchTerm.toLowerCase()))
+
+    const matchesCampus = selectedCampus === 'all' || app.campus === selectedCampus
+    const matchesStatus = selectedStatus === 'all' || app.status === selectedStatus
+    return matchesSearch && matchesCampus && matchesStatus
+  })
 
   return (
-    <div className="bg-white shadow-2xl rounded-2xl p-8 border border-gray-200 max-w-7xl mx-auto">
-      {actionMessage && (
-        <div className="mb-4 bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded">
-          {actionMessage}
+    <div className="bg-white shadow-2xl rounded-2xl p-6 sm:p-8 border border-gray-200 max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-2xl font-bold text-dillaNavy">
+            Student Application Management
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Review, verify, approve, reject, or return cost-sharing registration applications
+          </p>
         </div>
-      )}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-dillaNavy">
-          Student & Application Management
-        </h2>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedFilter}
-            onChange={(e) => setSelectedFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg"
-          >
-            <option value="all">All Applications</option>
-            <option value="by-campus">By Campus</option>
-            <option value="by-department">By Department</option>
-            <option value="by-status">By Status</option>
-          </select>
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg"
-          >
-            <option value="all">All Statuses</option>
-            <option value="submitted">Submitted</option>
-            <option value="dean-review">Campus Dean Review</option>
-            <option value="super-admin-review">Super Admin Review</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="return-for-correction">Correction Required</option>
-          </select>
+          <Button onClick={loadApplications} className="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200">
+            🔄 Refresh Applications
+          </Button>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full bg-white rounded-lg overflow-hidden">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="p-3 text-left text-dillaNavy">Student ID</th>
-              <th className="p-3 text-left text-dillaNavy">Student Name</th>
-              <th className="p-3 text-left text-dillaNavy">Department</th>
-              <th className="p-3 text-left text-dillaNavy">Campus</th>
-              <th className="p-3 text-left text-dillaNavy">Academic Year</th>
-              <th className="p-3 text-left text-dillaNavy">Status</th>
-              <th className="p-3 text-right text-dillaNavy">Actions</th>
+      {actionMessage && (
+        <div className="mb-5 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-sm p-3.5 rounded-lg flex items-center justify-between">
+          <span>{actionMessage}</span>
+          <button onClick={() => setActionMessage(null)} className="text-xs font-bold text-emerald-600 ml-4">✕</button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-5 bg-rose-50 border-l-4 border-rose-500 text-rose-800 text-sm p-3.5 rounded-lg flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-xs font-bold text-rose-600 ml-4">✕</button>
+        </div>
+      )}
+
+      {/* Search and Filters */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <Input
+          placeholder="Search by student name, ID, or department..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <select
+          value={selectedCampus}
+          onChange={(e) => setSelectedCampus(e.target.value)}
+          className="px-3.5 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGold"
+        >
+          <option value="all">All Campuses</option>
+          <option value="Main Campus">Main Campus</option>
+          <option value="Kakamega Campus">Kakamega Campus</option>
+          <option value="Eldoret Campus">Eldoret Campus</option>
+        </select>
+        <select
+          value={selectedStatus}
+          onChange={(e) => setSelectedStatus(e.target.value)}
+          className="px-3.5 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGold"
+        >
+          <option value="all">All Application Statuses</option>
+          <option value="submitted">Submitted</option>
+          <option value="dean-review">Campus Dean Review</option>
+          <option value="super-admin-review">Super Admin Review</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="return-for-correction">Correction Required</option>
+        </select>
+      </div>
+
+      {/* Applications Table */}
+      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-xs">
+        <table className="min-w-full bg-white divide-y divide-gray-200">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+                Student ID
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+                Student Name
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+                Department
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+                Campus
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+                Actions
+              </th>
             </tr>
           </thead>
-          <tbody>
-            {applications
-              .filter(
-                (app) =>
-                  (!setSearchTerm || app.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || app.studentId.toLowerCase().includes(searchTerm.toLowerCase())) &&
-                  (selectedFilter === 'all' || selectedStatus === 'all' || app.status === selectedStatus || app.finding === selectedStatus)
-              )
-              .map((app) => (
-                <tr key={app.id} className="border-b border-gray-100 hover:bg-dillaGray/10">
-                  <td className="p-3 font-medium text-dillaNavy">{app.studentId}</td>
-                  <td className="p-3 text-dillaGray">{app.studentName}</td>
-                  <td className="p-3 text-dillaGray">{app.department}</td>
-                  <td className="p-3 text-dillaGray">{app.campus}</td>
-                  <td className="p-3 text-dillaGray">{app.academicYear}</td>
-                  <td className="p-3">
+          <tbody className="divide-y divide-gray-100 bg-white">
+            {filteredApplications.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="px-4 py-8 text-center text-sm text-gray-500">
+                  No applications found matching the search criteria.
+                </td>
+              </tr>
+            ) : (
+              filteredApplications.map((app) => (
+                <tr key={app.id} className="hover:bg-slate-50/70 transition-colors">
+                  <td className="px-4 py-3.5 font-mono font-bold text-xs text-dillaNavy">
+                    {app.studentId}
+                  </td>
+                  <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
+                    {app.studentName}
+                  </td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 font-medium">
+                    {app.department}
+                  </td>
+                  <td className="px-4 py-3.5 text-sm text-gray-800 font-medium">
+                    {app.campus}
+                  </td>
+                  <td className="px-4 py-3.5">
                     <StatusBadge status={app.status} />
                   </td>
-                  <td className="p-3 text-right">
-                    <Button
-                      onClick={() => viewApplication(app.id)}
-                      className="text-dillaNavy text-sm hover:text-dillaGold mr-1"
+                  <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
+                    <button
+                      onClick={() => setViewingApp(app)}
+                      className="px-2.5 py-1 text-xs font-semibold text-dillaNavy bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                     >
                       View
-                    </Button>
-                    {app.status === 'dean-review' && (
-                      <Button
-                        onClick={() => approveApplication(app.id)}
-                        className="text-green-600 text-sm hover:text-green-800 mr-1"
+                    </button>
+                    {app.status !== 'approved' && (
+                      <button
+                        onClick={() => handleFinalDecision(app.studentId || app.id, 'approved', 'Approved by Super Admin')}
+                        className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
                       >
                         Approve
-                      </Button>
+                      </button>
                     )}
-                    {app.status === 'dean-review' && (
-                      <Button
-                        onClick={() => rejectApplication(app.id)}
-                        className="text-red-600 text-sm hover:text-red-800 mr-1"
+                    {app.status !== 'rejected' && (
+                      <button
+                        onClick={() => handleFinalDecision(app.studentId || app.id, 'rejected', 'Does not meet cost-sharing requirements')}
+                        className="px-2.5 py-1 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
                       >
                         Reject
-                      </Button>
+                      </button>
                     )}
-                    {app.status !== 'approved' && app.status !== 'rejected' && (
-                      <Button
-                        onClick={() => returnForCorrection(app.id)}
-                        className="text-dillaGold text-sm hover:text-gold-800"
+                    {app.status !== 'return-for-correction' && (
+                      <button
+                        onClick={() => handleFinalDecision(app.studentId || app.id, 'return-for-correction', 'Missing required registration slip details')}
+                        className="px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
                       >
                         Return
-                      </Button>
+                      </button>
                     )}
+                    <button
+                      onClick={() => {
+                        setResetTargetStudent(app)
+                        setResetPasswordInput('Student@Dilla2026!')
+                      }}
+                      className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-dillaNavy bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                      title="Reset this student's login password"
+                    >
+                      Reset PW
+                    </button>
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* View Application Detail Modal */}
+      {viewingApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-2xl w-full p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setViewingApp(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1 rounded-lg"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
+              <div className="w-10 h-10 rounded-xl bg-dillaNavy/10 text-dillaNavy flex items-center justify-center">
+                <Icon name="users" className="w-5 h-5 text-dillaNavy" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-dillaNavy">{viewingApp.studentName}</h3>
+                <p className="text-xs text-gray-500 font-mono">Admission No: {viewingApp.studentId}</p>
+              </div>
+              <div className="ml-auto">
+                <StatusBadge status={viewingApp.status} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+              <div>
+                <span className="text-gray-500 block font-medium">Campus</span>
+                <span className="font-bold text-dillaNavy text-sm">{viewingApp.campus}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block font-medium">Department</span>
+                <span className="font-bold text-gray-900 text-sm">{viewingApp.department}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block font-medium">Academic Year</span>
+                <span className="font-bold text-gray-900 text-sm">{viewingApp.academicYear}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block font-medium">Program</span>
+                <span className="font-semibold text-gray-900">{viewingApp.program}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block font-medium">Year of Study</span>
+                <span className="font-semibold text-gray-900">Year {viewingApp.yearOfStudy}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block font-medium">Gender</span>
+                <span className="font-semibold text-gray-900">{viewingApp.gender}</span>
+              </div>
+            </div>
+
+            {/* Dean Review Findings */}
+            <div className="mb-6 p-4 rounded-xl border border-blue-100 bg-blue-50/50">
+              <h4 className="text-xs font-bold text-dillaNavy uppercase tracking-wider mb-2">
+                Campus Dean Review Finding
+              </h4>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-gray-600">Verification Finding:</span>
+                <StatusBadge status={viewingApp.finding} />
+              </div>
+              <p className="text-xs text-gray-700 mt-1">
+                <strong>Dean's Comments:</strong> {viewingApp.deanComments || 'None provided.'}
+              </p>
+            </div>
+
+            {viewingApp.superAdminComments && (
+              <div className="mb-6 p-4 rounded-xl border border-purple-100 bg-purple-50/50">
+                <h4 className="text-xs font-bold text-purple-900 uppercase tracking-wider mb-1">
+                  Super Admin Decision Comments
+                </h4>
+                <p className="text-xs text-purple-900">{viewingApp.superAdminComments}</p>
+              </div>
+            )}
+
+            {/* Actions in Modal */}
+            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100">
+              <Button
+                onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'approved', 'Approved by Super Admin')}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1"
+              >
+                ✓ Approve
+              </Button>
+              <Button
+                onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'rejected', 'Rejected by Super Admin')}
+                className="bg-rose-600 hover:bg-rose-700 text-white flex-1"
+              >
+                ✕ Reject
+              </Button>
+              <Button
+                onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'return-for-correction', 'Missing required registration slip details')}
+                className="bg-amber-600 hover:bg-amber-700 text-white flex-1"
+              >
+                ↩ Return
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset Modal */}
+      {resetTargetStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-dillaNavy mb-1">
+              Reset Student Password
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Set new password for <strong>{resetTargetStudent.studentName}</strong> ({resetTargetStudent.studentId})
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                New Password
+              </label>
+              <Input
+                value={resetPasswordInput}
+                onChange={(e) => setResetPasswordInput(e.target.value)}
+                placeholder="Enter new password"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Default: <code>Student@Dilla2026!</code>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 mt-5">
+              <Button
+                type="button"
+                onClick={() => setResetTargetStudent(null)}
+                className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleResetStudentPassword}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                Reset Password
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

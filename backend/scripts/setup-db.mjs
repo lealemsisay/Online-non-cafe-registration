@@ -38,11 +38,19 @@ async function run() {
       role text NOT NULL CHECK (role IN ('student','dean','admin')),
       campus text,
       email text,
+      status text NOT NULL DEFAULT 'active',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
 
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS alt_password_hash text;
+    ALTER TABLE app_user ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
+
+    CREATE TABLE IF NOT EXISTS system_setting (
+      key text PRIMARY KEY,
+      value text NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
 
     CREATE TABLE IF NOT EXISTS student (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -200,8 +200,8 @@ async function seed() {
     const hash = await hashPassword(u.password)
     const altHash = u.altPassword ? await hashPassword(u.altPassword) : null
     const res = await client.query(
-      `INSERT INTO app_user (username, password_hash, alt_password_hash, full_name, role, campus, email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO app_user (username, password_hash, alt_password_hash, full_name, role, campus, email, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
        ON CONFLICT (username) DO UPDATE
        SET password_hash = EXCLUDED.password_hash,
            alt_password_hash = EXCLUDED.alt_password_hash,
@@ -209,6 +209,7 @@ async function seed() {
            role = EXCLUDED.role,
            campus = EXCLUDED.campus,
            email = EXCLUDED.email,
+           status = COALESCE(app_user.status, 'active'),
            updated_at = NOW()
        RETURNING id`,
       [u.username, hash, altHash, u.fullName, u.role, u.campus, u.email]

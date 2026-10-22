@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     const client = await pool.connect()
     try {
       const result = await client.query(
-        `SELECT id, username, password_hash, alt_password_hash, full_name, role, campus, email 
+        `SELECT id, username, password_hash, alt_password_hash, full_name, role, campus, email, status 
          FROM app_user 
          WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
         [id]
@@ -35,6 +35,12 @@ export default async function handler(req, res) {
       }
 
       const user = result.rows[0]
+
+      if (user.status === 'inactive') {
+        console.warn(`[AUTH] Login blocked for deactivated account: "${user.username}"`)
+        return res.status(403).json({ message: 'Account has been deactivated. Please contact your campus dean or administrator.' })
+      }
+
       let ok = await verifyPassword(pwd, user.password_hash)
 
       if (!ok && user.alt_password_hash) {
