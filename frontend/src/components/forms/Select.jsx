@@ -2,31 +2,44 @@ import React from 'react'
 
 const Select = ({
   name,
-  placeholder,
-  options,
+  placeholder = 'Select an option',
+  options = [],
   value,
   onChange,
+  className = '',
+  required = false,
+  disabled = false,
   ...props
 }) => {
   const handleChange = (e) => {
-    onChange(e.target.value)
+    if (typeof onChange === 'function') {
+      onChange(e)
+    }
   }
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <select
         name={name}
-        value={value}
+        value={value || ''}
         onChange={handleChange}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGold focus:border-dillaGold transition-colors"
+        required={required}
+        disabled={disabled}
+        className={`w-full px-3.5 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed cursor-pointer ${className}`}
         {...props}
       >
-        <option value="" disabled>{placeholder}</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        <option value="" disabled className="text-slate-400">
+          {placeholder}
+        </option>
+        {options.map((option) => {
+          const val = typeof option === 'object' ? option.value : option
+          const lbl = typeof option === 'object' ? option.label : option
+          return (
+            <option key={val} value={val} className="text-slate-900 bg-white py-1">
+              {lbl}
+            </option>
+          )
+        })}
       </select>
     </div>
   )

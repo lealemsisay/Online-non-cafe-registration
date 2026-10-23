@@ -21,21 +21,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'Application ID and decision are required' })
     }
 
-    if (decision !== 'approved' && decision !== 'rejected') {
-      return res.status(400).json({ message: 'Invalid decision. Must be "approved" or "rejected"' })
+    const validDecisions = ['approved', 'rejected', 'return-for-correction', 'returned-for-correction']
+    if (!validDecisions.includes(decision)) {
+      return res.status(400).json({ message: 'Invalid decision. Must be "approved", "rejected", or "return-for-correction"' })
     }
+
+    const normalizedDecision = (decision === 'returned-for-correction' || decision === 'return-for-correction')
+      ? 'return-for-correction'
+      : decision
 
     const client = await pool.connect()
     try {
       const result = await client.query(
         `UPDATE student 
-         SET approval_status = $1, super_admin_comments = $2, 
+         SET approval_status = CASE WHEN $1 = 'approved' THEN 'approved' WHEN $1 = 'rejected' THEN 'rejected' ELSE 'pending' END,
+             super_admin_comments = $2, 
              approved_at = CASE WHEN $1 = 'approved' THEN NOW() ELSE NULL END,
              rejected_at = CASE WHEN $1 = 'rejected' THEN NOW() ELSE NULL END,
-             application_status = CASE WHEN $1 = 'approved' THEN 'approved' ELSE 'rejected' END
+             application_status = $1,
+             updated_at = NOW()
          WHERE id::text = $3 OR student_id = $3
          RETURNING id, student_id AS "studentId", full_name AS "fullName", department, campus, approval_status AS "approvalStatus", super_admin_comments AS "superAdminComments", approved_at AS "approvedAt", rejected_at AS "rejectedAt", application_status AS "applicationStatus"`,
-        [decision, comments || null, applicationId]
+        [normalizedDecision, comments || null, applicationId]
       )
 
       if (result.rows.length === 0) {
