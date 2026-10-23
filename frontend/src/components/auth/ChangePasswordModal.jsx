@@ -78,41 +78,41 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full p-6 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 sm:p-7 relative">
         <button
           onClick={handleClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1 rounded-lg"
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 font-bold text-lg cursor-pointer"
           aria-label="Close dialog"
         >
           ✕
         </button>
 
-        <div className="flex items-center gap-3 mb-5">
-          <div className="p-2.5 bg-dillaNavy/10 text-dillaNavy rounded-xl">
-            <Icon name="sliders-horizontal" className="w-5 h-5 text-dillaNavy" />
+        <div className="flex items-center gap-3 mb-5 border-b border-slate-100 pb-3">
+          <div className="p-2.5 bg-dillaGreen/10 text-dillaGreen rounded-xl">
+            <Icon name="key" className="w-5 h-5 text-dillaGreen" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-dillaNavy">Change Password</h3>
-            <p className="text-xs text-gray-500">Update your account login password</p>
+            <h3 className="text-lg font-bold text-dillaDarkGreen font-serif">Change Account Password</h3>
+            <p className="text-xs text-slate-500">Update your university portal credentials</p>
           </div>
         </div>
 
         {error && (
-          <div className="mb-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm p-3 rounded-lg">
+          <div className="mb-4 bg-rose-50 border-l-4 border-rose-500 text-rose-800 text-xs sm:text-sm p-3.5 rounded-xl shadow-2xs">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-4 bg-green-50 border-l-4 border-green-500 text-green-700 text-sm p-3 rounded-lg">
+          <div className="mb-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-xs sm:text-sm p-3.5 rounded-xl shadow-2xs">
             {success}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
               Current Password
             </label>
             <Input
@@ -121,11 +121,12 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
               required
+              className="text-slate-900"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
               New Password (min 6 characters)
             </label>
             <Input
@@ -134,11 +135,12 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
+              className="text-slate-900"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
               Confirm New Password
             </label>
             <Input
@@ -147,33 +149,36 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              className="text-slate-900"
             />
           </div>
 
-          <div className="flex items-center justify-between text-xs text-gray-600 pt-1">
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
+            <label className="flex items-center gap-2 cursor-pointer font-medium">
               <input
                 type="checkbox"
                 checked={showPassword}
                 onChange={(e) => setShowPassword(e.target.checked)}
-                className="rounded border-gray-300 text-dillaNavy focus:ring-dillaGold"
+                className="rounded border-slate-300 text-dillaGreen focus:ring-dillaGold"
               />
-              <span>Show passwords</span>
+              <span>Show password characters</span>
             </label>
           </div>
 
-          <div className="flex items-center gap-3 pt-3">
+          <div className="flex items-center gap-3 pt-3 border-t border-slate-200">
             <Button
               type="button"
+              variant="outline"
               onClick={handleClose}
-              className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200"
+              className="flex-1 font-semibold"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-dillaNavy text-white hover:bg-opacity-95"
+              variant="primary"
+              className="flex-1 font-bold shadow-md"
             >
               {loading ? 'Updating...' : 'Save Password'}
             </Button>

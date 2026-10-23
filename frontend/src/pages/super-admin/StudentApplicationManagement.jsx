@@ -72,7 +72,7 @@ const StudentApplicationManagement = () => {
     setError(null)
     const token = localStorage.getItem('token')
     const comments = window.prompt(`Enter approval comments or reason for ${decision}:`, defaultComment)
-    if (comments === null) return // cancelled
+    if (comments === null) return
 
     try {
       const res = await fetch('/api/approval/final', {
@@ -156,61 +156,73 @@ const StudentApplicationManagement = () => {
   })
 
   return (
-    <div className="bg-white shadow-2xl rounded-2xl p-6 sm:p-8 border border-gray-200 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-gray-100 pb-4">
-        <div>
-          <h2 className="text-2xl font-bold text-dillaNavy">
-            Student Application Management
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Review, verify, approve, reject, or return cost-sharing registration applications
-          </p>
+    <div className="bg-white shadow-xl rounded-2xl p-6 sm:p-8 border border-slate-200 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-dillaGreen/10 text-dillaGreen flex items-center justify-center p-2 flex-shrink-0">
+            <Icon name="users" className="w-6 h-6 text-dillaGreen" />
+          </div>
+          <div>
+            <h2 className="font-serif text-2xl font-bold text-dillaDarkGreen">
+              Student Application Management Workspace
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Review dean findings, verify documentation, and execute final university cost-sharing approvals
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={loadApplications} className="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200">
-            🔄 Refresh Applications
+          <Button
+            onClick={loadApplications}
+            variant="outline"
+            className="text-xs font-semibold"
+          >
+            <Icon name="refresh" className="w-4 h-4 text-dillaGreen" />
+            Refresh Records
           </Button>
         </div>
       </div>
 
       {actionMessage && (
-        <div className="mb-5 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-sm p-3.5 rounded-lg flex items-center justify-between">
+        <div className="bg-emerald-50 border-l-4 border-emerald-600 text-emerald-900 text-xs sm:text-sm p-4 rounded-xl flex items-center justify-between shadow-2xs">
           <span>{actionMessage}</span>
-          <button onClick={() => setActionMessage(null)} className="text-xs font-bold text-emerald-600 ml-4">✕</button>
+          <button onClick={() => setActionMessage(null)} className="text-emerald-700 hover:text-emerald-950 font-bold ml-4">✕</button>
         </div>
       )}
 
       {error && (
-        <div className="mb-5 bg-rose-50 border-l-4 border-rose-500 text-rose-800 text-sm p-3.5 rounded-lg flex items-center justify-between">
+        <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-900 text-xs sm:text-sm p-4 rounded-xl flex items-center justify-between shadow-2xs">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-xs font-bold text-rose-600 ml-4">✕</button>
+          <button onClick={() => setError(null)} className="text-rose-700 hover:text-rose-950 font-bold ml-4">✕</button>
         </div>
       )}
 
       {/* Search and Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Input
           placeholder="Search by student name, ID, or department..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          className="h-10 text-slate-900"
         />
         <select
           value={selectedCampus}
           onChange={(e) => setSelectedCampus(e.target.value)}
-          className="px-3.5 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGold"
+          className="h-10 px-3.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
         >
           <option value="all">All Campuses</option>
           <option value="Main Campus">Main Campus</option>
-          <option value="Kakamega Campus">Kakamega Campus</option>
-          <option value="Eldoret Campus">Eldoret Campus</option>
+          <option value="Odaya Campus">Odaya Campus</option>
+          <option value="Haru Campus">Haru Campus</option>
         </select>
         <select
           value={selectedStatus}
           onChange={(e) => setSelectedStatus(e.target.value)}
-          className="px-3.5 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGold"
+          className="h-10 px-3.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
         >
           <option value="all">All Application Statuses</option>
-          <option value="submitted">Submitted</option>
+          <option value="submitted">Submitted (New)</option>
           <option value="dean-review">Campus Dean Review</option>
           <option value="super-admin-review">Super Admin Review</option>
           <option value="approved">Approved</option>
@@ -220,50 +232,50 @@ const StudentApplicationManagement = () => {
       </div>
 
       {/* Applications Table */}
-      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-xs">
-        <table className="min-w-full bg-white divide-y divide-gray-200">
-          <thead className="bg-slate-50">
+      <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs">
+        <table className="min-w-full bg-white divide-y divide-slate-200">
+          <thead className="bg-[#f1f5f3]">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Student ID
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Student Name
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Department
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Campus
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-right text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
+          <tbody className="divide-y divide-slate-100 bg-white text-xs">
             {filteredApplications.length === 0 ? (
               <tr>
-                <td colSpan="6" className="px-4 py-8 text-center text-sm text-gray-500">
+                <td colSpan="6" className="px-4 py-8 text-center text-slate-500 font-medium">
                   No applications found matching the search criteria.
                 </td>
               </tr>
             ) : (
               filteredApplications.map((app) => (
-                <tr key={app.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="px-4 py-3.5 font-mono font-bold text-xs text-dillaNavy">
+                <tr key={app.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3.5 font-mono font-bold text-dillaGreen text-xs">
                     {app.studentId}
                   </td>
-                  <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
+                  <td className="px-4 py-3.5 font-bold text-slate-900">
                     {app.studentName}
                   </td>
-                  <td className="px-4 py-3.5 text-sm text-gray-700 font-medium">
+                  <td className="px-4 py-3.5 text-slate-800 font-medium">
                     {app.department}
                   </td>
-                  <td className="px-4 py-3.5 text-sm text-gray-800 font-medium">
+                  <td className="px-4 py-3.5 text-slate-700">
                     {app.campus}
                   </td>
                   <td className="px-4 py-3.5">
@@ -272,14 +284,14 @@ const StudentApplicationManagement = () => {
                   <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
                     <button
                       onClick={() => setViewingApp(app)}
-                      className="px-2.5 py-1 text-xs font-semibold text-dillaNavy bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                      className="px-2.5 py-1 text-xs font-semibold text-dillaDarkGreen bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                     >
-                      View
+                      View Slip
                     </button>
                     {app.status !== 'approved' && (
                       <button
                         onClick={() => handleFinalDecision(app.studentId || app.id, 'approved', 'Approved by Super Admin')}
-                        className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
+                        className="px-2.5 py-1 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer border border-emerald-200"
                       >
                         Approve
                       </button>
@@ -287,7 +299,7 @@ const StudentApplicationManagement = () => {
                     {app.status !== 'rejected' && (
                       <button
                         onClick={() => handleFinalDecision(app.studentId || app.id, 'rejected', 'Does not meet cost-sharing requirements')}
-                        className="px-2.5 py-1 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
+                        className="px-2.5 py-1 text-xs font-bold text-rose-900 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer border border-rose-200"
                       >
                         Reject
                       </button>
@@ -295,7 +307,7 @@ const StudentApplicationManagement = () => {
                     {app.status !== 'return-for-correction' && (
                       <button
                         onClick={() => handleFinalDecision(app.studentId || app.id, 'return-for-correction', 'Missing required registration slip details')}
-                        className="px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
+                        className="px-2.5 py-1 text-xs font-bold text-amber-950 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer border border-amber-200"
                       >
                         Return
                       </button>
@@ -305,8 +317,8 @@ const StudentApplicationManagement = () => {
                         setResetTargetStudent(app)
                         setResetPasswordInput('Student@Dilla2026!')
                       }}
-                      className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-dillaNavy bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                      title="Reset this student's login password"
+                      className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                      title="Authorized reset of student password"
                     >
                       Reset PW
                     </button>
@@ -320,97 +332,100 @@ const StudentApplicationManagement = () => {
 
       {/* View Application Detail Modal */}
       {viewingApp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-2xl w-full p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setViewingApp(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1 rounded-lg"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 font-bold text-lg"
             >
               ✕
             </button>
 
-            <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-              <div className="w-10 h-10 rounded-xl bg-dillaNavy/10 text-dillaNavy flex items-center justify-center">
-                <Icon name="users" className="w-5 h-5 text-dillaNavy" />
+            <div className="flex items-center gap-3 mb-6 border-b border-slate-200 pb-4">
+              <div className="w-12 h-12 rounded-xl bg-dillaGreen/10 text-dillaGreen flex items-center justify-center p-2">
+                <Icon name="users" className="w-6 h-6 text-dillaGreen" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-dillaNavy">{viewingApp.studentName}</h3>
-                <p className="text-xs text-gray-500 font-mono">Admission No: {viewingApp.studentId}</p>
+                <h3 className="font-serif text-xl font-bold text-dillaDarkGreen">{viewingApp.studentName}</h3>
+                <p className="text-xs text-slate-500 font-mono">Admission No: {viewingApp.studentId}</p>
               </div>
               <div className="ml-auto">
                 <StatusBadge status={viewingApp.status} />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6 bg-[#f8faf9] p-4 rounded-xl border border-slate-200 text-xs">
               <div>
-                <span className="text-gray-500 block font-medium">Campus</span>
-                <span className="font-bold text-dillaNavy text-sm">{viewingApp.campus}</span>
+                <span className="text-slate-500 font-bold uppercase tracking-wider block">Campus</span>
+                <span className="font-bold text-dillaGreen text-sm">{viewingApp.campus}</span>
               </div>
               <div>
-                <span className="text-gray-500 block font-medium">Department</span>
-                <span className="font-bold text-gray-900 text-sm">{viewingApp.department}</span>
+                <span className="text-slate-500 font-bold uppercase tracking-wider block">Department</span>
+                <span className="font-bold text-slate-900 text-sm">{viewingApp.department}</span>
               </div>
               <div>
-                <span className="text-gray-500 block font-medium">Academic Year</span>
-                <span className="font-bold text-gray-900 text-sm">{viewingApp.academicYear}</span>
+                <span className="text-slate-500 font-bold uppercase tracking-wider block">Academic Year</span>
+                <span className="font-bold text-slate-900 text-sm">{viewingApp.academicYear}</span>
               </div>
               <div>
-                <span className="text-gray-500 block font-medium">Program</span>
-                <span className="font-semibold text-gray-900">{viewingApp.program}</span>
+                <span className="text-slate-500 font-bold uppercase tracking-wider block">Program Type</span>
+                <span className="font-semibold text-slate-900">{viewingApp.program}</span>
               </div>
               <div>
-                <span className="text-gray-500 block font-medium">Year of Study</span>
-                <span className="font-semibold text-gray-900">Year {viewingApp.yearOfStudy}</span>
+                <span className="text-slate-500 font-bold uppercase tracking-wider block">Year of Study</span>
+                <span className="font-semibold text-slate-900">Year {viewingApp.yearOfStudy}</span>
               </div>
               <div>
-                <span className="text-gray-500 block font-medium">Gender</span>
-                <span className="font-semibold text-gray-900">{viewingApp.gender}</span>
+                <span className="text-slate-500 font-bold uppercase tracking-wider block">Gender</span>
+                <span className="font-semibold text-slate-900">{viewingApp.gender}</span>
               </div>
             </div>
 
             {/* Dean Review Findings */}
-            <div className="mb-6 p-4 rounded-xl border border-blue-100 bg-blue-50/50">
-              <h4 className="text-xs font-bold text-dillaNavy uppercase tracking-wider mb-2">
+            <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50/50">
+              <h4 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-2">
                 Campus Dean Review Finding
               </h4>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs text-gray-600">Verification Finding:</span>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-xs text-slate-700 font-medium">Verification Status:</span>
                 <StatusBadge status={viewingApp.finding} />
               </div>
-              <p className="text-xs text-gray-700 mt-1">
-                <strong>Dean's Comments:</strong> {viewingApp.deanComments || 'None provided.'}
+              <p className="text-xs text-slate-800 mt-1 leading-relaxed">
+                <strong>Dean's Verification Remarks:</strong> {viewingApp.deanComments || 'Verified as registered student.'}
               </p>
             </div>
 
             {viewingApp.superAdminComments && (
-              <div className="mb-6 p-4 rounded-xl border border-purple-100 bg-purple-50/50">
-                <h4 className="text-xs font-bold text-purple-900 uppercase tracking-wider mb-1">
-                  Super Admin Decision Comments
+              <div className="mb-6 p-4 rounded-xl border border-purple-200 bg-purple-50/50">
+                <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider mb-1">
+                  Super Admin Authorization Remarks
                 </h4>
                 <p className="text-xs text-purple-900">{viewingApp.superAdminComments}</p>
               </div>
             )}
 
             {/* Actions in Modal */}
-            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100">
+            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-200">
               <Button
                 onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'approved', 'Approved by Super Admin')}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1"
+                variant="primary"
+                className="flex-1 font-bold"
               >
-                ✓ Approve
+                ✓ Approve Subsidy
               </Button>
               <Button
                 onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'rejected', 'Rejected by Super Admin')}
-                className="bg-rose-600 hover:bg-rose-700 text-white flex-1"
+                variant="danger"
+                className="flex-1 font-bold"
               >
                 ✕ Reject
               </Button>
               <Button
                 onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'return-for-correction', 'Missing required registration slip details')}
-                className="bg-amber-600 hover:bg-amber-700 text-white flex-1"
+                variant="gold"
+                className="flex-1 font-bold"
               >
-                ↩ Return
+                ↩ Return for Fix
               </Button>
             </div>
           </div>
@@ -419,41 +434,42 @@ const StudentApplicationManagement = () => {
 
       {/* Password Reset Modal */}
       {resetTargetStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-dillaNavy mb-1">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-dillaDarkGreen mb-1">
               Reset Student Password
             </h3>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-slate-500 mb-4">
               Set new password for <strong>{resetTargetStudent.studentName}</strong> ({resetTargetStudent.studentId})
             </p>
 
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 New Password
               </label>
               <Input
                 value={resetPasswordInput}
                 onChange={(e) => setResetPasswordInput(e.target.value)}
                 placeholder="Enter new password"
+                className="text-slate-900"
               />
-              <p className="text-[11px] text-gray-500 mt-1">
+              <p className="text-[11px] text-slate-500 mt-1">
                 Default: <code>Student@Dilla2026!</code>
               </p>
             </div>
 
-            <div className="flex items-center gap-2 mt-5">
+            <div className="flex items-center gap-2 mt-5 pt-3 border-t border-slate-200">
               <Button
-                type="button"
+                variant="outline"
                 onClick={() => setResetTargetStudent(null)}
-                className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200"
+                className="flex-1"
               >
                 Cancel
               </Button>
               <Button
-                type="button"
+                variant="gold"
                 onClick={handleResetStudentPassword}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+                className="flex-1 font-bold"
               >
                 Reset Password
               </Button>

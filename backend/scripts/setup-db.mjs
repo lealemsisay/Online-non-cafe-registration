@@ -115,6 +115,77 @@ async function run() {
       student_id text,
       uploaded_at timestamptz
     );
+
+    CREATE TABLE IF NOT EXISTS custom_field_definition (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      field_key text NOT NULL,
+      label text NOT NULL,
+      field_type text NOT NULL CHECK (field_type IN ('text', 'textarea', 'number', 'date', 'select', 'checkbox')),
+      options jsonb DEFAULT '[]'::jsonb,
+      is_required boolean NOT NULL DEFAULT false,
+      is_active boolean NOT NULL DEFAULT true,
+      campus text,
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS student_custom_value (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id text NOT NULL,
+      field_id uuid NOT NULL REFERENCES custom_field_definition(id) ON DELETE CASCADE,
+      field_key text NOT NULL,
+      value text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT student_field_unique UNIQUE(student_id, field_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS campus_submission (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      batch_number text UNIQUE NOT NULL,
+      campus text NOT NULL,
+      submitted_by text NOT NULL,
+      student_count integer NOT NULL DEFAULT 0,
+      student_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+      filters_applied jsonb,
+      notes text,
+      status text NOT NULL DEFAULT 'submitted',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS app_notification (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      recipient_id text,
+      recipient_role text,
+      campus text,
+      title text NOT NULL,
+      message text NOT NULL,
+      type text NOT NULL DEFAULT 'info',
+      link text,
+      is_read boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS report_history (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      report_type text NOT NULL,
+      creator_username text NOT NULL,
+      creator_role text NOT NULL,
+      campus_scope text,
+      parameters jsonb DEFAULT '{}'::jsonb,
+      file_format text NOT NULL,
+      record_count integer NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'completed',
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_custom_field_def_campus ON custom_field_definition(campus, is_active);
+    CREATE INDEX IF NOT EXISTS idx_student_custom_val_student ON student_custom_value(student_id);
+    CREATE INDEX IF NOT EXISTS idx_campus_submission_campus ON campus_submission(campus, status);
+    CREATE INDEX IF NOT EXISTS idx_app_notification_recipient ON app_notification(recipient_id, recipient_role, campus, is_read);
+    CREATE INDEX IF NOT EXISTS idx_report_history_creator ON report_history(creator_username, campus_scope, created_at DESC);
   `
   await db.query(ddl)
   console.log('All tables present (idempotent DDL complete)')

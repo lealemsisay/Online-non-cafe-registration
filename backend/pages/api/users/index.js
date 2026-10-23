@@ -126,7 +126,11 @@ export default async function handler(req, res) {
           return res.status(403).json({ message: 'Access denied: Super Admin only' })
         }
         const { name, email, campus, password } = body
-        const rawUsername = email ? email.split('@')[0] : `dean.${(campus || 'campus').toLowerCase().replace(/\s+/g, '')}`
+        if (!campus || !campus.trim()) {
+          return res.status(400).json({ message: 'Campus assignment is required when creating a Campus Dean' })
+        }
+        const cleanCampus = campus.trim()
+        const rawUsername = email ? email.split('@')[0] : `dean.${cleanCampus.toLowerCase().replace(/\s+/g, '')}`
         const username = rawUsername.trim()
         const initialPassword = password || 'Dean@Dilla2026!'
         const hash = await hashPassword(initialPassword)
@@ -137,15 +141,28 @@ export default async function handler(req, res) {
            ON CONFLICT (username) DO UPDATE 
            SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = EXCLUDED.email, status = 'active', updated_at = NOW()
            RETURNING id, username, full_name AS "name", email, campus, role, status`,
-          [username, hash, name || 'Campus Dean', campus || 'Main Campus', email || null]
+          [username, hash, name || 'Campus Dean', cleanCampus, email || null]
         )
 
         // Also update campus table dean_id if campus matches
-        if (result.rows[0]?.id && campus) {
-          await client.query(`UPDATE campus SET dean_id = $1 WHERE name = $2`, [result.rows[0].id, campus])
+        if (result.rows[0]?.id && cleanCampus) {
+          await client.query(`UPDATE campus SET dean_id = $1 WHERE LOWER(name) = LOWER($2)`, [result.rows[0].id, cleanCampus])
         }
 
         return res.status(201).json({ dean: result.rows[0], user: result.rows[0] })
+      }
+
+      // If Campus Dean is creating a user:
+      // Can ONLY create students and must be automatically assigned to the Dean's campus
+      if (auth.user.role === 'dean') {
+        if (role && role !== 'student') {
+          return res.status(403).json({ message: 'Forbidden: Campus Deans can only create student accounts' })
+        }
+        if (body.campus && body.campus.trim().toLowerCase() !== (auth.user.campus || '').trim().toLowerCase()) {
+          return res.status(403).json({
+            message: `Forbidden: Campus Dean is restricted to '${auth.user.campus}'. Cannot assign user to '${body.campus}'.`,
+          })
+        }
       }
 
       // Otherwise creating a student record
@@ -157,8 +174,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'Student ID and full name are required' })
       }
 
-      // If Dean creating student, enforce Dean's campus
-      const targetCampus = auth.user.role === 'dean' ? auth.user.campus : (campus || 'Main Campus')
+      // Automatically assign campus: if Dean, strictly Dean's campus; if Admin, require or assign campus
+      const targetCampus = auth.user.role === 'dean' ? auth.user.campus : (campus && campus.trim() ? campus.trim() : 'Main Campus')
 
       const result = await client.query(
         `INSERT INTO student (student_id, full_name, gender, campus, department, program, year_of_study, phone, email, academic_year, application_status)
@@ -225,6 +242,9 @@ export default async function handler(req, res) {
       if (target.role === 'student' && auth.user.role === 'dean') {
         if (target.campus && auth.user.campus && target.campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
           return res.status(403).json({ message: 'Forbidden: Cannot modify students of another campus.' })
+        }
+        if (campus && campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
+          return res.status(403).json({ message: 'Forbidden: Campus Dean cannot reassign student to another campus.' })
         }
       }
 

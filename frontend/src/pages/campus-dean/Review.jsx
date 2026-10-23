@@ -65,6 +65,7 @@ const CampusDeanReview = () => {
               submittedAt: s.createdAt || new Date().toISOString(),
               phone: s.phone || '',
               email: s.email || '',
+              customFields: s.customFields || [],
             })
             if (s.deanReview && !isReturnRoute) {
               setReviewFinding(s.deanReview)
@@ -161,12 +162,12 @@ const CampusDeanReview = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Navigation header */}
-      <div className="flex items-center justify-between">
+      {/* Top action navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button
           variant="outline"
           onClick={() => navigate('/dean')}
-          className="border-slate-300 text-slate-700 hover:bg-slate-50 flex items-center gap-2 text-xs"
+          className="text-xs font-semibold"
         >
           <Icon name="arrow-left" className="w-4 h-4" />
           Back to Dean Dashboard
@@ -175,39 +176,41 @@ const CampusDeanReview = () => {
         <Button
           variant="outline"
           onClick={() => setShowPasswordResetModal(true)}
-          className="border-slate-300 text-slate-700 hover:bg-slate-50 flex items-center gap-2 text-xs font-medium"
+          className="text-xs font-semibold text-slate-800"
         >
-          <Icon name="key" className="w-4 h-4 text-dillaNavy" />
+          <Icon name="key" className="w-4 h-4 text-dillaGreen" />
           Reset Student Password
         </Button>
       </div>
 
       {feedbackMsg && (
-        <div className="bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 p-4 rounded-md flex items-center gap-2 shadow-sm">
+        <div className="bg-emerald-50 border-l-4 border-emerald-600 text-emerald-900 p-4 rounded-xl flex items-center gap-2 shadow-2xs">
           <Icon name="check-circle" className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-          <span className="text-sm font-medium">{feedbackMsg}</span>
+          <span className="text-sm font-semibold">{feedbackMsg}</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="bg-red-50 border-l-4 border-red-500 text-red-800 p-4 rounded-md flex items-center gap-2 shadow-sm">
-          <Icon name="alert" className="w-5 h-5 text-red-600 flex-shrink-0" />
-          <span className="text-sm font-medium">{errorMsg}</span>
+        <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-900 p-4 rounded-xl flex items-center gap-2 shadow-2xs">
+          <Icon name="alert-circle" className="w-5 h-5 text-rose-600 flex-shrink-0" />
+          <span className="text-sm font-semibold">{errorMsg}</span>
         </div>
       )}
 
       {/* Main Review Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         {/* Banner */}
-        <div className="bg-gradient-to-r from-dillaNavy to-slate-900 text-white p-6">
+        <div className="bg-gradient-to-r from-dillaDarkGreen via-[#12442c] to-dillaGreen text-white p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <span className="text-xs uppercase tracking-wider font-semibold text-dillaGold">
+              <span className="text-xs uppercase tracking-wider font-bold text-dillaGold">
                 {userCampus} Non-Cafeteria Verification
               </span>
-              <h1 className="text-2xl font-bold mt-1">{application.studentName}</h1>
-              <p className="text-xs text-slate-300 mt-1">
-                ID: {application.studentId} • {application.department} • {application.campus}
+              <h1 className="font-serif text-2xl font-bold tracking-tight mt-1 text-white">
+                {application.studentName}
+              </h1>
+              <p className="text-xs text-white/80 mt-1">
+                ID: <span className="font-mono font-bold">{application.studentId}</span> • {application.department} • {application.campus}
               </p>
             </div>
             <div>
@@ -218,59 +221,77 @@ const CampusDeanReview = () => {
 
         <div className="p-6 space-y-6">
           {/* Student Profile Info */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
             <div>
-              <p className="text-slate-500 font-semibold uppercase">Academic Year</p>
-              <p className="text-slate-800 font-bold mt-0.5">{application.academicYear}</p>
+              <p className="text-slate-500 font-bold uppercase tracking-wider">Academic Year</p>
+              <p className="text-slate-900 font-bold mt-1">{application.academicYear}</p>
             </div>
             <div>
-              <p className="text-slate-500 font-semibold uppercase">Department</p>
-              <p className="text-slate-800 font-bold mt-0.5">{application.department}</p>
+              <p className="text-slate-500 font-bold uppercase tracking-wider">Department</p>
+              <p className="text-slate-900 font-bold mt-1">{application.department}</p>
             </div>
             <div>
-              <p className="text-slate-500 font-semibold uppercase">Campus</p>
-              <p className="text-slate-800 font-bold mt-0.5">{application.campus}</p>
+              <p className="text-slate-500 font-bold uppercase tracking-wider">Campus</p>
+              <p className="text-slate-900 font-bold mt-1">{application.campus}</p>
             </div>
             <div>
-              <p className="text-slate-500 font-semibold uppercase">Submitted Date</p>
-              <p className="text-slate-800 font-bold mt-0.5">
+              <p className="text-slate-500 font-bold uppercase tracking-wider">Submitted Date</p>
+              <p className="text-slate-900 font-bold mt-1">
                 {new Date(application.submittedAt).toLocaleDateString()}
               </p>
             </div>
           </div>
 
+          {/* Dynamic Campus Custom Fields */}
+          {application.customFields && application.customFields.length > 0 && (
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <h3 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Icon name="sliders-horizontal" className="w-3.5 h-3.5 text-dillaGold" />
+                Submitted Custom Field Information
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {application.customFields.map((cf) => (
+                  <div key={cf.fieldKey} className="bg-white p-3 rounded-lg border border-slate-200 text-xs">
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{cf.label}</p>
+                    <p className="font-bold text-slate-900 mt-0.5">{cf.value || 'N/A'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* PDF Slip Verification */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base font-bold text-dillaNavy flex items-center gap-2">
-                <Icon name="file-text" className="w-5 h-5 text-dillaNavy" />
+              <h2 className="text-base font-bold text-dillaDarkGreen flex items-center gap-2">
+                <Icon name="file-text" className="w-5 h-5 text-dillaGreen" />
                 Submitted Registration Slip & Documentation
               </h2>
-              <span className="text-xs text-slate-500">PDF verification required</span>
+              <span className="text-xs font-semibold text-dillaGreen">PDF verification required</span>
             </div>
 
-            <div className="bg-slate-100 rounded-lg p-4 border border-slate-200">
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
               <PDFViewer
                 src={application.pdfUrl}
                 loading={false}
                 onDownload={() => window.open(application.pdfUrl, '_blank')}
               />
-              <div className="mt-3 text-xs text-slate-600 flex items-center gap-2">
-                <Icon name="info" className="w-4 h-4 text-dillaNavy" />
-                <span>Verify that the document contains Student ID: <strong>{application.studentId}</strong> and official registrar stamps.</span>
+              <div className="mt-3 text-xs text-slate-700 flex items-center gap-2">
+                <Icon name="info" className="w-4 h-4 text-dillaGreen flex-shrink-0" />
+                <span>Verify that the slip contains Student ID: <strong>{application.studentId}</strong> and official registrar validation stamps.</span>
               </div>
             </div>
           </div>
 
           {/* Dean Verification Finding */}
           <div>
-            <h2 className="text-base font-bold text-dillaNavy mb-3">Dean's Verification Decision</h2>
+            <h2 className="text-base font-bold text-dillaDarkGreen mb-3">Dean's Verification Decision</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label
-                className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
                   reviewFinding === 'registered'
-                    ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500/20'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-500/20'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
                 }`}
               >
                 <input
@@ -282,18 +303,18 @@ const CampusDeanReview = () => {
                   className="mt-1 text-emerald-600 focus:ring-emerald-500"
                 />
                 <div>
-                  <p className="text-sm font-bold text-slate-800">Verified & Registered</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-sm font-bold text-slate-900">Verified & Eligible</p>
+                  <p className="text-xs text-slate-600 mt-1">
                     Student is authenticated, verified non-cafe, and approved to forward to Super Admin.
                   </p>
                 </div>
               </label>
 
               <label
-                className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
                   reviewFinding === 'return-for-correction'
-                    ? 'border-amber-500 bg-amber-50/50 ring-2 ring-amber-500/20'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-500/20'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
                 }`}
               >
                 <input
@@ -305,18 +326,18 @@ const CampusDeanReview = () => {
                   className="mt-1 text-amber-600 focus:ring-amber-500"
                 />
                 <div>
-                  <p className="text-sm font-bold text-slate-800">Return for Correction</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Missing documentation or unclear slips. Student will be notified to update.
+                  <p className="text-sm font-bold text-slate-900">Return for Correction</p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Missing documentation or unclear slips. Student will be notified to correct and re-submit.
                   </p>
                 </div>
               </label>
 
               <label
-                className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
                   reviewFinding === 'not_registered'
-                    ? 'border-red-500 bg-red-50/50 ring-2 ring-red-500/20'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-rose-500 bg-rose-50/70 ring-2 ring-rose-500/20'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
                 }`}
               >
                 <input
@@ -325,12 +346,12 @@ const CampusDeanReview = () => {
                   value="not_registered"
                   checked={reviewFinding === 'not_registered'}
                   onChange={(e) => setReviewFinding(e.target.value)}
-                  className="mt-1 text-red-600 focus:ring-red-500"
+                  className="mt-1 text-rose-600 focus:ring-rose-500"
                 />
                 <div>
-                  <p className="text-sm font-bold text-slate-800">Not Registered / Disqualified</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Student is not enrolled or is already in campus cafeteria.
+                  <p className="text-sm font-bold text-slate-900">Ineligible / Disqualified</p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Student is not currently enrolled or consumes meals in campus cafeteria facilities.
                   </p>
                 </div>
               </label>
@@ -339,18 +360,18 @@ const CampusDeanReview = () => {
 
           {/* Dean's Comments */}
           <div>
-            <label className="block text-sm font-bold text-dillaNavy mb-1">
-              Campus Dean Verification Remarks & Notes
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Campus Dean Verification Remarks & Directives
             </label>
             <textarea
               value={deanComments}
               onChange={(e) => setDeanComments(e.target.value)}
-              placeholder="Enter specific verification details or correction requirements for the student..."
+              placeholder="Enter specific verification remarks or required corrections for the student..."
               rows={4}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaNavy text-sm text-slate-800"
+              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm text-slate-900"
             />
             <p className="text-xs text-slate-500 mt-1">
-              Comments are recorded in the audit trail and shown to the student if returned for correction.
+              Remarks are recorded in the university audit trail and visible to the student.
             </p>
           </div>
 
@@ -359,7 +380,7 @@ const CampusDeanReview = () => {
             <Button
               variant="outline"
               onClick={() => navigate('/dean')}
-              className="w-full sm:w-auto border-slate-300 text-slate-700"
+              className="w-full sm:w-auto font-semibold"
             >
               Cancel
             </Button>
@@ -367,7 +388,8 @@ const CampusDeanReview = () => {
             <Button
               onClick={() => handleSubmitReview('return-for-correction')}
               disabled={isSubmitting}
-              className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white font-medium"
+              variant="gold"
+              className="w-full sm:w-auto font-bold"
             >
               Return for Correction
             </Button>
@@ -375,13 +397,14 @@ const CampusDeanReview = () => {
             <Button
               onClick={() => handleSubmitReview()}
               disabled={isSubmitting}
-              className="w-full sm:w-auto bg-dillaNavy hover:bg-slate-800 text-white font-medium shadow-sm"
+              variant="primary"
+              className="w-full sm:w-auto font-bold shadow-md px-6"
             >
               {isSubmitting
                 ? 'Recording Decision...'
                 : reviewFinding === 'return-for-correction'
                 ? 'Submit Return for Correction'
-                : 'Submit & Forward to Super Admin'}
+                : 'Submit & Forward to Super Admin →'}
             </Button>
           </div>
         </div>
@@ -389,20 +412,20 @@ const CampusDeanReview = () => {
 
       {/* Authorized Student Password Reset Modal */}
       {showPasswordResetModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-dillaNavy">Authorized Student Password Reset</h3>
+              <h3 className="text-lg font-bold text-dillaDarkGreen">Authorized Student Password Reset</h3>
               <button
                 onClick={() => setShowPasswordResetModal(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+                className="text-slate-400 hover:text-slate-700 font-bold text-lg"
               >
                 ✕
               </button>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-4">
-              <p className="font-semibold">Dean Authority Scoping:</p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-950 mb-4">
+              <p className="font-bold">Dean Authority Scoping:</p>
               <p className="mt-0.5">
                 Resetting credentials for student <strong>{application.studentName}</strong> (
                 {application.studentId}) in {application.campus}.
@@ -411,7 +434,7 @@ const CampusDeanReview = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   Custom Password (Optional)
                 </label>
                 <Input
@@ -419,7 +442,7 @@ const CampusDeanReview = () => {
                   placeholder="Leave empty for auto-generated password"
                   value={customPassword}
                   onChange={(e) => setCustomPassword(e.target.value)}
-                  className="w-full text-slate-800"
+                  className="text-slate-900"
                 />
               </div>
 
@@ -427,14 +450,13 @@ const CampusDeanReview = () => {
                 <Button
                   variant="outline"
                   onClick={() => setShowPasswordResetModal(false)}
-                  className="border-slate-300 text-slate-700"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleExecutePasswordReset}
                   disabled={resettingPassword}
-                  className="bg-dillaNavy text-white hover:bg-slate-800"
+                  variant="primary"
                 >
                   {resettingPassword ? 'Resetting...' : 'Confirm Reset Password'}
                 </Button>

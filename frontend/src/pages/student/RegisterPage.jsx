@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import RegistrationForm from './RegistrationForm'
+import Icon from '@/components/icons/Icon'
 
 const RegisterPage = () => {
   const navigate = useNavigate()
@@ -82,15 +83,17 @@ const RegisterPage = () => {
   }
 
   return (
-    <div className="py-6">
+    <div className="py-4 space-y-4">
       {message && (
-        <div className="max-w-3xl mx-auto mb-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 p-4 rounded-md shadow-sm">
-          {message}
+        <div className="max-w-4xl mx-auto bg-emerald-50 border-l-4 border-emerald-600 text-emerald-900 p-4 rounded-xl shadow-sm flex items-center gap-2">
+          <Icon name="check-circle" className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <span className="text-sm font-semibold">{message}</span>
         </div>
       )}
       {error && (
-        <div className="max-w-3xl mx-auto mb-4 bg-red-50 border-l-4 border-red-500 text-red-800 p-4 rounded-md shadow-sm">
-          {error}
+        <div className="max-w-4xl mx-auto bg-rose-50 border-l-4 border-rose-600 text-rose-900 p-4 rounded-xl shadow-sm flex items-center gap-2">
+          <Icon name="alert-circle" className="w-5 h-5 text-rose-600 flex-shrink-0" />
+          <span className="text-sm font-semibold">{error}</span>
         </div>
       )}
       <RegistrationForm

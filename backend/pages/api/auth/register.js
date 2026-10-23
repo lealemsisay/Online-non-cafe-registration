@@ -1,5 +1,6 @@
 import { pool } from '@/drizzle/client'
 import { signToken, hashPassword, setCorsHeaders } from '@/lib/auth'
+import { checkRegistrationWindow } from '@/lib/schedule'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
@@ -24,12 +25,22 @@ export default async function handler(req, res) {
       yearOfStudy,
       phone,
       role: requestedRole,
+      customValues,
     } = body
 
     // SECURITY: Strictly prevent public registration as Admin, Dean, or any non-student role
     if (requestedRole && requestedRole.toLowerCase() !== 'student') {
       return res.status(403).json({
         message: 'Forbidden: Public registration is strictly restricted to students. Administrative and Dean accounts must be provisioned by Super Admin.',
+      })
+    }
+
+    // TASK 4: Enforce registration schedule window in backend
+    const windowCheck = await checkRegistrationWindow()
+    if (!windowCheck.isOpen) {
+      return res.status(403).json({
+        message: windowCheck.reason || 'Cost-sharing registration window is currently closed.',
+        schedule: windowCheck.schedule,
       })
     }
 

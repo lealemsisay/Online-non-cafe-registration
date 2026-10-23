@@ -23,12 +23,19 @@ export default async function handler(req, res) {
 
     const client = await pool.connect()
     try {
-      // 1. Fetch target user
+      // 1. Fetch target user by app_user id, username, email, or student table id/student_id
+      const cleanTargetUser = (targetUsername || '').trim()
       const userRes = await client.query(
-        `SELECT id, username, full_name, role, campus, email 
-         FROM app_user 
-         WHERE id::text = $1 OR LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
-        [targetIdentifier]
+        `SELECT u.id, u.username, u.full_name, u.role, u.campus, u.email 
+         FROM app_user u
+         LEFT JOIN student s ON LOWER(u.username) = LOWER(s.student_id)
+         WHERE u.id::text = $1 
+            OR LOWER(u.username) = LOWER($1) 
+            OR (u.email IS NOT NULL AND LOWER(u.email) = LOWER($1))
+            OR s.id::text = $1
+            OR ($2 != '' AND (LOWER(u.username) = LOWER($2) OR LOWER(s.student_id) = LOWER($2)))
+         LIMIT 1`,
+        [targetIdentifier, cleanTargetUser]
       )
 
       if (userRes.rows.length === 0) {

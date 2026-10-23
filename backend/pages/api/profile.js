@@ -31,10 +31,42 @@ export default async function handler(req, res) {
         [userId, studentLookupId]
       )
 
-      const studentData = studentRes.rows[0] || null
+      let studentData = studentRes.rows[0] || null
 
       if (!appUser && !studentData) {
         return res.status(404).json({ message: 'User not found' })
+      }
+
+      // Fetch custom fields and values if student record exists
+      if (studentData) {
+        const studentCampus = studentData.campus || (appUser && appUser.campus) || 'Main Campus'
+        const customValuesRes = await client.query(
+          `SELECT v.field_key AS "fieldKey", v.value, d.label, d.field_type AS "fieldType", d.options, d.is_required AS "isRequired"
+           FROM custom_field_definition d
+           LEFT JOIN student_custom_value v ON d.id = v.field_id AND v.student_id = $1
+           WHERE d.is_active = true AND (d.campus IS NULL OR LOWER(d.campus) = LOWER($2))
+           ORDER BY d.campus NULLS FIRST, d.created_at ASC`,
+          [studentData.studentId, studentCampus]
+        )
+
+        const customValuesMap = {}
+        const customFieldsList = customValuesRes.rows.map((r) => {
+          customValuesMap[r.fieldKey] = r.value
+          return {
+            fieldKey: r.fieldKey,
+            label: r.label,
+            fieldType: r.fieldType,
+            options: r.options,
+            isRequired: r.isRequired,
+            value: r.value,
+          }
+        })
+
+        studentData = {
+          ...studentData,
+          customValues: customValuesMap,
+          customFields: customFieldsList,
+        }
       }
 
       const responseUser = {

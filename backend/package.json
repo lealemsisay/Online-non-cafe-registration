@@ -11,7 +11,9 @@
     "start": "next start",
     "setup-db": "node scripts/setup-db.mjs",
     "seed": "node scripts/seed-dev-accounts.mjs",
-    "test:auth": "node scripts/verify-auth-flows.mjs"
+    "test:auth": "node scripts/verify-auth-flows.mjs",
+    "test:phase2": "node scripts/verify-phase2-flows.mjs",
+    "test:phase3": "node scripts/verify-phase3-flows.mjs"
   },
   "keywords": [],
   "author": "",
@@ -21,6 +23,7 @@
     "drizzle-kit": "^1.0.0-rc.5-ab785fc",
     "drizzle-orm": "^1.0.0-rc.5-ab785fc",
     "next": "^16.4.2",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "xlsx": "^0.18.5"
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Input, Button, Select } from '@/components/forms'
+import { Input, Button } from '@/components/forms'
 import Icon from '@/components/icons/Icon'
 
 const RegistrationForm = ({
@@ -25,6 +25,10 @@ const RegistrationForm = ({
     pdfFileName: 'cost_sharing_registration_slip.pdf',
   })
 
+  // Dynamic Custom Fields
+  const [customFields, setCustomFields] = useState([])
+  const [customValues, setCustomValues] = useState(initialData?.customValues || {})
+
   const [campusList, setCampusList] = useState(['Main Campus', 'Odaya Campus', 'Haru Campus'])
   const [academicYears, setAcademicYears] = useState(['2023/2024', '2024/2025'])
   const [uploadProgress, setUploadProgress] = useState(100)
@@ -41,15 +45,17 @@ const RegistrationForm = ({
         studentId: studentId || initialData.studentId || prev.studentId,
         isNonCafeteria: true,
       }))
+      if (initialData.customValues) {
+        setCustomValues(initialData.customValues)
+      }
     }
   }, [initialData, studentId])
 
   useEffect(() => {
-    // Fetch live campuses and academic years
     const token = localStorage.getItem('token')
-    fetch('/api/campuses', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+
+    fetch('/api/campuses', { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.campuses && data.campuses.length > 0) {
@@ -58,9 +64,7 @@ const RegistrationForm = ({
       })
       .catch(() => {})
 
-    fetch('/api/settings', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    fetch('/api/settings', { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.academicYears && data.academicYears.length > 0) {
@@ -70,6 +74,20 @@ const RegistrationForm = ({
       .catch(() => {})
   }, [])
 
+  // Fetch applicable custom fields for the selected campus
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const campusParam = encodeURIComponent(formData.campus || 'Main Campus')
+
+    fetch(`/api/custom-fields?campus=${campusParam}`, { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setCustomFields(data?.customFields || [])
+      })
+      .catch(() => {})
+  }, [formData.campus])
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
     setFormData((prev) => ({
@@ -78,16 +96,23 @@ const RegistrationForm = ({
     }))
   }
 
+  const handleCustomFieldChange = (fieldKey, value) => {
+    setCustomValues((prev) => ({
+      ...prev,
+      [fieldKey]: value,
+    }))
+  }
+
   const handleFileChange = (file) => {
     if (!file) return
 
     if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-      setUploadError('Only PDF registration slips are accepted')
+      setUploadError('Only official PDF registration slips are accepted')
       return
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setUploadError('File size exceeds the 5MB limit')
+      setUploadError('File size exceeds the 5MB institutional limit')
       return
     }
 
@@ -95,7 +120,6 @@ const RegistrationForm = ({
     setUploadProgress(20)
     setFormData((prev) => ({ ...prev, pdfFileName: file.name }))
 
-    // Simulate reliable upload
     const timer = setInterval(() => {
       setUploadProgress((p) => {
         if (p >= 100) {
@@ -114,61 +138,85 @@ const RegistrationForm = ({
     setUploadError(null)
 
     if (!formData.studentId || !formData.fullName) {
-      setUploadError('Student ID and Full Name are required.')
+      setUploadError('Student ID and Full Name are mandatory.')
       return
     }
 
     if (!formData.declaration) {
       setUploadError(
-        'Please confirm and check the non-cafeteria student declaration checkbox below.'
+        'Please check the certification declaration checkbox at the bottom before submitting.'
       )
       return
     }
 
+    // Validate required custom fields
+    for (const f of customFields) {
+      if (f.isRequired) {
+        const val = customValues[f.fieldKey]
+        if (val === undefined || val === null || String(val).trim() === '') {
+          setUploadError(`Mandatory campus field required: '${f.label}'`)
+          return
+        }
+      }
+    }
+
     setIsSubmitting(true)
     try {
-      await onSubmit(formData)
+      await onSubmit({
+        ...formData,
+        customValues,
+      })
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="bg-white shadow-sm rounded-xl p-8 border border-slate-200 max-w-3xl mx-auto">
+    <div className="bg-white shadow-xl rounded-2xl p-6 sm:p-10 border border-slate-200 max-w-4xl mx-auto">
       {/* Form Header */}
-      <div className="text-center pb-6 border-b border-slate-200 mb-6">
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-full bg-dillaNavy text-white flex items-center justify-center font-bold text-xs">
-            DU
-          </div>
-          <span className="text-xs uppercase tracking-wider font-bold text-dillaNavy">
-            Dilla University Registrar
+      <div className="text-center pb-6 border-b border-slate-200 mb-8">
+        <div className="w-16 h-16 rounded-2xl bg-white p-1.5 mx-auto mb-3 shadow-md border border-slate-200 flex items-center justify-center">
+          <img
+            src="/dilla-logo.png"
+            alt="Dilla University Crest"
+            className="w-full h-full object-contain"
+          />
+        </div>
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <span className="text-xs uppercase tracking-wider font-bold text-dillaGreen">
+            DILLA UNIVERSITY REGISTRAR DIRECTORATE
           </span>
         </div>
-        <h1 className="text-2xl font-bold text-dillaNavy">
-          Cost-Sharing Registration Application
+        <h1 className="font-serif text-2xl sm:text-3xl font-bold text-dillaDarkGreen">
+          Cost-Sharing Subsidy Registration Application
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          Official enrollment form for Non-Cafeteria cost-sharing beneficiaries
+          Official enrollment form for Non-Cafeteria cost-sharing student beneficiaries
         </p>
       </div>
 
       {uploadError && (
-        <div className="bg-red-50 border-l-4 border-red-500 text-red-800 p-4 rounded-md mb-6 flex items-center gap-2 text-sm shadow-sm">
-          <Icon name="alert" className="w-5 h-5 text-red-600 flex-shrink-0" />
+        <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-800 p-4 rounded-xl mb-6 flex items-start gap-2.5 text-xs sm:text-sm shadow-2xs">
+          <Icon name="alert-circle" className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
           <span>{uploadError}</span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Academic & Identity Information */}
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* 1. Student Identification */}
         <div>
-          <h2 className="text-sm font-bold text-dillaNavy uppercase tracking-wider mb-3">
-            1. Student Identification
-          </h2>
+          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
+            <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
+              1
+            </span>
+            <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
+              Student Identification
+            </h2>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Student ID / Admission Number *
               </label>
               <Input
@@ -178,13 +226,13 @@ const RegistrationForm = ({
                 value={formData.studentId}
                 onChange={handleChange}
                 required
-                className="w-full text-slate-800"
+                className="text-slate-900"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Full Name *
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Full Student Name *
               </label>
               <Input
                 name="fullName"
@@ -193,19 +241,19 @@ const RegistrationForm = ({
                 value={formData.fullName}
                 onChange={handleChange}
                 required
-                className="w-full text-slate-800"
+                className="text-slate-900"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Gender *
               </label>
               <select
                 name="gender"
                 value={formData.gender}
                 onChange={handleChange}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-dillaNavy text-sm"
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -213,14 +261,14 @@ const RegistrationForm = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Campus *
               </label>
               <select
                 name="campus"
                 value={formData.campus}
                 onChange={handleChange}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-dillaNavy text-sm"
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
                 {campusList.map((c) => (
                   <option key={c} value={c}>
@@ -232,21 +280,27 @@ const RegistrationForm = ({
           </div>
         </div>
 
-        {/* Academic Program */}
+        {/* 2. Academic Details */}
         <div>
-          <h2 className="text-sm font-bold text-dillaNavy uppercase tracking-wider mb-3">
-            2. Academic Details
-          </h2>
+          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
+            <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
+              2
+            </span>
+            <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
+              Academic Program & Contact
+            </h2>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Department *
               </label>
               <select
                 name="department"
                 value={formData.department}
                 onChange={handleChange}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-dillaNavy text-sm"
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
                 <option value="Computer Science">Computer Science</option>
                 <option value="Information Technology">Information Technology</option>
@@ -254,21 +308,23 @@ const RegistrationForm = ({
                 <option value="Business Administration">Business Administration</option>
                 <option value="Economics">Economics</option>
                 <option value="Civil Engineering">Civil Engineering</option>
+                <option value="Electrical Engineering">Electrical Engineering</option>
                 <option value="Medicine & Health Sciences">Medicine & Health Sciences</option>
+                <option value="Nursing">Nursing</option>
                 <option value="Law">Law</option>
                 <option value="Agriculture & Natural Resources">Agriculture</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Program Type *
               </label>
               <select
                 name="program"
                 value={formData.program}
                 onChange={handleChange}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-dillaNavy text-sm"
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
                 <option value="Regular Degree">Regular Degree</option>
                 <option value="Continuing Education">Continuing Education</option>
@@ -277,14 +333,14 @@ const RegistrationForm = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Year of Study *
               </label>
               <select
                 name="yearOfStudy"
                 value={formData.yearOfStudy}
                 onChange={handleChange}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-dillaNavy text-sm"
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
                 <option value="1">Year 1</option>
                 <option value="2">Year 2</option>
@@ -295,14 +351,14 @@ const RegistrationForm = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Academic Year *
               </label>
               <select
                 name="academicYear"
                 value={formData.academicYear}
                 onChange={handleChange}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-dillaNavy text-sm"
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
                 {academicYears.map((y) => (
                   <option key={y} value={y}>
@@ -313,7 +369,7 @@ const RegistrationForm = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Phone Number
               </label>
               <Input
@@ -322,12 +378,12 @@ const RegistrationForm = ({
                 placeholder="+251 9..."
                 value={formData.phone}
                 onChange={handleChange}
-                className="w-full text-slate-800"
+                className="text-slate-900"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Email Address
               </label>
               <Input
@@ -336,19 +392,121 @@ const RegistrationForm = ({
                 placeholder="student@du.edu.et"
                 value={formData.email}
                 onChange={handleChange}
-                className="w-full text-slate-800"
+                className="text-slate-900"
               />
             </div>
           </div>
         </div>
 
-        {/* Document Upload */}
+        {/* 3. Campus Custom Information */}
+        {customFields.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
+              <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
+                3
+              </span>
+              <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
+                Additional Campus-Specific Information
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+              {customFields.map((field) => {
+                const val = customValues[field.fieldKey] || ''
+
+                if (field.fieldType === 'textarea') {
+                  return (
+                    <div key={field.id} className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={val}
+                        onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                        placeholder={`Enter ${field.label}...`}
+                        required={field.isRequired}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+                      />
+                    </div>
+                  )
+                }
+
+                if (field.fieldType === 'select') {
+                  const opts = Array.isArray(field.options) ? field.options : []
+                  return (
+                    <div key={field.id}>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                      </label>
+                      <select
+                        value={val}
+                        onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                        required={field.isRequired}
+                        className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+                      >
+                        <option value="">-- Select {field.label} --</option>
+                        {opts.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                }
+
+                if (field.fieldType === 'checkbox') {
+                  return (
+                    <div key={field.id} className="flex items-center pt-5">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={val === 'true' || val === true}
+                          onChange={(e) =>
+                            handleCustomFieldChange(field.fieldKey, e.target.checked ? 'true' : 'false')
+                          }
+                          className="rounded border-slate-300 text-dillaGreen focus:ring-dillaGold w-4 h-4"
+                        />
+                        <span>
+                          {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                        </span>
+                      </label>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div key={field.id}>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                    </label>
+                    <Input
+                      type={field.fieldType === 'number' ? 'number' : field.fieldType === 'date' ? 'date' : 'text'}
+                      value={val}
+                      onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                      placeholder={`Enter ${field.label}`}
+                      required={field.isRequired}
+                      className="text-slate-900 text-xs"
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 4. Document Upload */}
         <div>
-          <h2 className="text-sm font-bold text-dillaNavy uppercase tracking-wider mb-2">
-            3. Verification Document Upload (PDF)
-          </h2>
-          <p className="text-xs text-slate-500 mb-3">
-            Please attach your official registration slip issued by the registrar.
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
+            <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
+              {customFields.length > 0 ? '4' : '3'}
+            </span>
+            <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
+              Verification Document Upload (PDF Registration Slip)
+            </h2>
+          </div>
+          <p className="text-xs text-slate-600 mb-3">
+            Please attach your official registration slip issued by the Dilla University Registrar.
           </p>
 
           <input
@@ -361,22 +519,22 @@ const RegistrationForm = ({
 
           <div
             onClick={() => fileRef.current?.click()}
-            className="border-2 border-dashed border-slate-300 hover:border-dillaNavy rounded-xl p-6 text-center cursor-pointer transition-all hover:bg-slate-50"
+            className="border-2 border-dashed border-slate-300 hover:border-dillaGreen rounded-2xl p-6 text-center cursor-pointer transition-all hover:bg-emerald-50/30 bg-slate-50"
           >
-            <div className="w-12 h-12 rounded-full bg-blue-50 text-dillaNavy flex items-center justify-center mx-auto mb-2">
-              <Icon name="upload" className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-dillaGreen flex items-center justify-center mx-auto mb-2 shadow-2xs">
+              <Icon name="upload" className="w-6 h-6 text-dillaGreen" />
             </div>
-            <p className="text-sm font-semibold text-slate-700">
+            <p className="text-sm font-bold text-slate-800">
               {formData.pdfFileName
                 ? `Attached: ${formData.pdfFileName}`
-                : 'Click to upload registration slip (PDF)'}
+                : 'Click to select and upload your semester registration slip (PDF)'}
             </p>
-            <p className="text-xs text-slate-400 mt-1">Maximum file size: 5MB</p>
+            <p className="text-xs text-slate-500 mt-1">Accepted format: PDF • Maximum file size: 5MB</p>
 
             {uploadProgress > 0 && uploadProgress < 100 && (
               <div className="mt-3 w-48 mx-auto bg-slate-200 rounded-full h-1.5 overflow-hidden">
                 <div
-                  className="bg-dillaNavy h-full transition-all duration-300"
+                  className="bg-dillaGreen h-full transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 ></div>
               </div>
@@ -384,31 +542,31 @@ const RegistrationForm = ({
           </div>
         </div>
 
-        {/* Official Declaration */}
-        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+        {/* 5. Official Declaration */}
+        <div className="p-5 bg-[#f1f5f3] rounded-2xl border border-slate-300 space-y-3">
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
               name="isNonCafeteria"
               checked={formData.isNonCafeteria}
               onChange={handleChange}
-              className="mt-1 w-4 h-4 text-dillaNavy rounded border-slate-300 focus:ring-dillaNavy"
+              className="mt-1 w-4 h-4 text-dillaGreen rounded border-slate-300 focus:ring-dillaGold"
             />
-            <span className="text-xs text-slate-700 font-medium">
-              I certify that I am a registered <strong>Non-Cafeteria student</strong> who does not consume meals at the university dining hall and am applying for the monthly cost-sharing subsistence allowance.
+            <span className="text-xs text-slate-800 font-semibold leading-relaxed">
+              I certify that I am a registered <strong>Non-Cafeteria student</strong> who does not consume meals at the university cafeteria dining facilities and am applying for the monthly cost-sharing subsistence allowance.
             </span>
           </label>
 
-          <label className="flex items-start gap-3 cursor-pointer pt-2 border-t border-slate-200">
+          <label className="flex items-start gap-3 cursor-pointer pt-3 border-t border-slate-300">
             <input
               type="checkbox"
               name="declaration"
               checked={formData.declaration}
               onChange={handleChange}
-              className="mt-1 w-4 h-4 text-dillaNavy rounded border-slate-300 focus:ring-dillaNavy"
+              className="mt-1 w-4 h-4 text-dillaGreen rounded border-slate-300 focus:ring-dillaGold"
             />
-            <span className="text-xs text-slate-700 font-bold">
-              I hereby declare that all information entered is true and accurate. I understand that falsification will lead to disciplinary action and loss of university cost-sharing allowances. *
+            <span className="text-xs text-slate-900 font-bold leading-relaxed">
+              I hereby declare that all information entered is true and accurate. I understand that falsification will lead to disciplinary action, cancellation of registration, and loss of university cost-sharing allowances. *
             </span>
           </label>
         </div>
@@ -419,17 +577,18 @@ const RegistrationForm = ({
             type="button"
             variant="outline"
             onClick={onCancel || (() => (window.location.href = '/'))}
-            className="w-full sm:w-auto border-slate-300 text-slate-700"
+            className="w-full sm:w-auto font-semibold text-slate-700"
           >
-            Cancel
+            Cancel Application
           </Button>
 
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="w-full sm:w-auto bg-dillaNavy hover:bg-slate-800 text-white font-medium shadow-sm px-6"
+            variant="primary"
+            className="w-full sm:w-auto px-6 py-2.5 font-bold shadow-md"
           >
-            {isSubmitting ? 'Submitting Application...' : 'Submit Application for Review'}
+            {isSubmitting ? 'Submitting Application...' : 'Submit Application for Review →'}
           </Button>
         </div>
       </form>

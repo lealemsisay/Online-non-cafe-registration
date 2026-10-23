@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
+import Footer from '@/components/layout/Footer'
 
 // Student pages
 import StudentPortal from '@/pages/student'
@@ -10,6 +11,9 @@ import RegisterPage from '@/pages/student/RegisterPage'
 // Campus Dean pages
 import CampusDeanPortal from '@/pages/campus-dean'
 import CampusDeanReview from '@/pages/campus-dean/Review'
+import DeanReports from '@/pages/campus-dean/Reports'
+import DeanSettings from '@/pages/campus-dean/Settings'
+import DeanUserManagement from '@/pages/campus-dean/UserManagement'
 
 // Super Admin pages
 import SuperAdminPortal from '@/pages/super-admin'
@@ -95,18 +99,18 @@ const AppLayout = ({ children }) => {
   }
 
   if (isAuthPage) {
-    return <div className="min-h-screen bg-dillaGray">{children}</div>
+    return <div className="min-h-screen bg-dillaGray flex flex-col">{children}</div>
   }
 
   return (
-    <div className="min-h-screen bg-dillaGray">
+    <div className="min-h-screen bg-dillaGray flex flex-col">
       <Header
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         user={{ name: user.name, role: user.role, campus: user.campus }}
         onLogout={handleLogout}
       />
-      <div className="flex">
+      <div className="flex flex-1">
         {user.role && (
           <Sidebar
             isOpen={isSidebarOpen}
@@ -116,11 +120,12 @@ const AppLayout = ({ children }) => {
             onLogout={handleLogout}
           />
         )}
-        <main className={`flex-1 transition-all duration-300 pt-16 ${user.role ? 'sm:pl-64' : ''}`}>
-          <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
+        <div className={`flex-1 flex flex-col transition-all duration-300 pt-16 sm:pt-[5.85rem] ${user.role ? 'sm:pl-64' : ''}`}>
+          <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto">
             {children}
-          </div>
-        </main>
+          </main>
+          <Footer />
+        </div>
       </div>
     </div>
   )
@@ -206,6 +211,30 @@ const App = () => {
             element={
               <ProtectedRoute role="dean">
                 <CampusDeanReview />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dean/reports"
+            element={
+              <ProtectedRoute role="dean">
+                <DeanReports />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dean/settings"
+            element={
+              <ProtectedRoute role="dean">
+                <DeanSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dean/users"
+            element={
+              <ProtectedRoute role="dean">
+                <DeanUserManagement />
               </ProtectedRoute>
             }
           />

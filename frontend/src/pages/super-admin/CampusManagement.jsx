@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Input, Button, Select } from '@/components/forms'
+import { Input, Button } from '@/components/forms'
 import { StatusBadge } from '@/components/status/StatusBadge'
 import Icon from '@/components/icons/Icon'
 
@@ -35,7 +35,7 @@ const CampusManagement = () => {
     setError(null)
     setMessage(null)
     if (!newCampusName.trim()) {
-      setError('Please provide a campus name.')
+      setError('Please provide a valid campus name.')
       return
     }
 
@@ -172,68 +172,78 @@ const CampusManagement = () => {
   })
 
   return (
-    <div className="bg-white shadow-2xl rounded-2xl p-6 sm:p-8 border border-gray-200 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
-        <div>
-          <h2 className="text-2xl font-bold text-dillaNavy">Campus Management</h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Configure university campuses, assign deans, and manage active status
-          </p>
-        </div>
-        <div className="p-2.5 bg-dillaNavy/10 rounded-xl text-dillaNavy">
-          <Icon name="building" className="w-6 h-6 text-dillaNavy" />
+    <div className="bg-white shadow-xl rounded-2xl p-6 sm:p-8 border border-slate-200 max-w-5xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-dillaGreen/10 text-dillaGreen flex items-center justify-center p-2 flex-shrink-0">
+            <Icon name="building" className="w-6 h-6 text-dillaGreen" />
+          </div>
+          <div>
+            <h2 className="font-serif text-2xl font-bold text-dillaDarkGreen">
+              Campus Management
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Configure official Dilla University campuses, assign deans, and manage active status
+            </p>
+          </div>
         </div>
       </div>
 
       {message && (
-        <div className="mb-5 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-sm p-3.5 rounded-lg">
-          {message}
+        <div className="bg-emerald-50 border-l-4 border-emerald-600 text-emerald-900 text-xs sm:text-sm p-4 rounded-xl flex items-center justify-between shadow-2xs">
+          <span>{message}</span>
+          <button onClick={() => setMessage(null)} className="text-emerald-700 hover:text-emerald-950 font-bold ml-4">✕</button>
         </div>
       )}
 
       {error && (
-        <div className="mb-5 bg-rose-50 border-l-4 border-rose-500 text-rose-800 text-sm p-3.5 rounded-lg">
-          {error}
+        <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-900 text-xs sm:text-sm p-4 rounded-xl flex items-center justify-between shadow-2xs">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-rose-700 hover:text-rose-950 font-bold ml-4">✕</button>
         </div>
       )}
 
       {/* Add New Campus Form */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 mb-6">
-        <h3 className="text-sm font-bold text-dillaNavy uppercase tracking-wider mb-3">
-          Add New Campus
+      <div className="bg-[#f8faf9] border border-slate-200 rounded-2xl p-5">
+        <h3 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-3">
+          Provision New Campus
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Input
-            placeholder="Campus Name (e.g. Main Campus)"
+            placeholder="Campus Name (e.g. Main Campus, Haru Campus)"
             value={newCampusName}
             onChange={(e) => setNewCampusName(e.target.value)}
+            className="text-slate-900 h-10"
           />
           <Input
-            placeholder="Campus Code (e.g. MC, KC)"
+            placeholder="Campus Code (e.g. MC, OC, HC)"
             value={newCampusCode}
             onChange={(e) => setNewCampusCode(e.target.value)}
+            className="text-slate-900 h-10 font-mono"
           />
-          <Button onClick={handleAddCampus} className="w-full">
-            + Add Campus
+          <Button onClick={handleAddCampus} variant="primary" className="w-full font-bold">
+            + Add University Campus
           </Button>
         </div>
       </div>
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
-        <div className="w-full sm:w-72">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="w-full sm:w-80">
           <Input
             placeholder="Search campuses by name, code, or dean..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-10 text-slate-900"
           />
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Filter Status:</span>
+          <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Filter Status:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGold"
+            className="px-3 py-2 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
           >
             <option value="all">All Statuses ({campuses.length})</option>
             <option value="active">Active</option>
@@ -243,44 +253,44 @@ const CampusManagement = () => {
       </div>
 
       {/* Campus List Table */}
-      <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-xs">
-        <table className="min-w-full bg-white divide-y divide-gray-200">
-          <thead className="bg-slate-50">
+      <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs">
+        <table className="min-w-full bg-white divide-y divide-slate-200">
+          <thead className="bg-[#f1f5f3]">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Campus Name
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Code
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Assigned Dean
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-dillaNavy uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-right text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
+          <tbody className="divide-y divide-slate-100 bg-white text-xs">
             {filteredCampuses.length === 0 ? (
               <tr>
-                <td colSpan="5" className="px-4 py-8 text-center text-sm text-gray-500">
+                <td colSpan="5" className="px-4 py-8 text-center text-slate-500 font-medium">
                   No campuses match the specified search or filter.
                 </td>
               </tr>
             ) : (
               filteredCampuses.map((campus) => (
-                <tr key={campus.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="px-4 py-3.5 font-semibold text-dillaNavy text-sm">
+                <tr key={campus.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3.5 font-bold text-dillaGreen text-sm">
                     {campus.name}
                   </td>
-                  <td className="px-4 py-3.5 text-xs font-mono font-medium text-gray-600">
+                  <td className="px-4 py-3.5 font-mono font-bold text-slate-600">
                     {campus.code || '-'}
                   </td>
-                  <td className="px-4 py-3.5 text-sm text-gray-700 font-medium">
+                  <td className="px-4 py-3.5 text-slate-800 font-medium">
                     {campus.dean || 'Pending Assignment'}
                   </td>
                   <td className="px-4 py-3.5">
@@ -289,7 +299,7 @@ const CampusManagement = () => {
                   <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
                     <button
                       onClick={() => handleEdit(campus)}
-                      className="px-2.5 py-1 text-xs font-semibold text-dillaNavy bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                      className="px-2.5 py-1 text-xs font-semibold text-dillaDarkGreen bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                     >
                       Edit
                     </button>
@@ -297,8 +307,8 @@ const CampusManagement = () => {
                       onClick={() => handleToggleStatus(campus.id)}
                       className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
                         campus.status === 'active'
-                          ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                          : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                          ? 'text-amber-800 bg-amber-50 hover:bg-amber-100'
+                          : 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
                       }`}
                     >
                       {campus.status === 'active' ? 'Deactivate' : 'Reactivate'}
@@ -319,42 +329,47 @@ const CampusManagement = () => {
 
       {/* Edit Campus Modal */}
       {editingCampus && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-dillaNavy mb-4">Edit Campus</h3>
-            <div className="space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-dillaDarkGreen mb-4">Edit Campus Details</h3>
+            <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Campus Name</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Campus Name
+                </label>
                 <Input
                   value={editingCampus.name}
                   onChange={(e) => setEditingCampus({ ...editingCampus, name: e.target.value })}
                   placeholder="Campus Name"
+                  className="text-slate-900"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Status</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Status
+                </label>
                 <select
                   value={editingCampus.status}
                   onChange={(e) => setEditingCampus({ ...editingCampus, status: e.target.value })}
-                  className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGold"
+                  className="w-full h-10 px-3 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
               </div>
             </div>
-            <div className="flex items-center gap-2 mt-6">
+            <div className="flex items-center gap-2 mt-6 pt-3 border-t border-slate-200">
               <Button
-                type="button"
+                variant="outline"
                 onClick={() => setEditingCampus(null)}
-                className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200"
+                className="flex-1"
               >
                 Cancel
               </Button>
               <Button
-                type="button"
+                variant="primary"
                 onClick={handleSave}
-                className="flex-1 bg-dillaNavy text-white"
+                className="flex-1 font-bold"
               >
                 Save Changes
               </Button>

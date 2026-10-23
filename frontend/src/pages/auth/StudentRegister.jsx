@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Input, Button, Select } from '@/components/forms'
 import Icon from '@/components/icons/Icon'
+import Footer from '@/components/layout/Footer'
 
 const StudentRegister = () => {
   const navigate = useNavigate()
@@ -20,7 +21,7 @@ const StudentRegister = () => {
     confirmPassword: '',
   })
 
-  const [campuses, setCampuses] = useState(['Main Campus', 'Kakamega Campus', 'Eldoret Campus'])
+  const [campuses, setCampuses] = useState(['Main Campus', 'Odaya Campus', 'Haru Campus'])
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -42,7 +43,6 @@ const StudentRegister = () => {
     setFormData((prev) => ({
       ...prev,
       [name]: value,
-      // Default username to studentId if username not manually set
       ...(name === 'studentId' && !prev.username ? { username: value } : {}),
     }))
   }
@@ -58,7 +58,7 @@ const StudentRegister = () => {
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match.')
+      setError('Passwords do not match. Please verify your password entry.')
       return
     }
 
@@ -72,16 +72,16 @@ const StudentRegister = () => {
         },
         body: JSON.stringify({
           role: 'student', // strictly enforced
-          fullName: formData.fullName,
-          studentId: formData.studentId,
-          username: formData.username || formData.studentId,
-          email: formData.email,
+          fullName: formData.fullName.trim(),
+          studentId: formData.studentId.trim(),
+          username: (formData.username || formData.studentId).trim(),
+          email: formData.email.trim(),
           campus: formData.campus,
           department: formData.department,
           gender: formData.gender,
           program: formData.program,
           yearOfStudy: formData.yearOfStudy,
-          phone: formData.phone,
+          phone: formData.phone.trim(),
           password: formData.password,
         }),
       })
@@ -89,7 +89,7 @@ const StudentRegister = () => {
       const data = await response.json()
 
       if (!response.ok) {
-        setError(data.message || 'Registration failed')
+        setError(data.message || 'Registration failed. Please check your data.')
         setLoading(false)
         return
       }
@@ -104,7 +104,7 @@ const StudentRegister = () => {
         localStorage.setItem('studentId', data.user.studentId || formData.studentId)
         localStorage.setItem('userEmail', data.user.email || formData.email)
 
-        setSuccess('Account created successfully! Logging you in...')
+        setSuccess('Account created successfully! Redirecting to student portal...')
         setTimeout(() => {
           window.location.href = '/'
         }, 1200)
@@ -121,224 +121,269 @@ const StudentRegister = () => {
   }
 
   return (
-    <div className="min-h-screen bg-dillaGray flex items-center justify-center p-4 py-8">
-      <div className="bg-white shadow-2xl rounded-2xl w-full max-w-xl p-6 sm:p-8 border border-gray-200">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-dillaNavy flex items-center justify-center shadow-xs">
-            <Icon className="w-6 h-6 text-dillaGold" name="building" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-dillaNavy leading-none">
-              DILLA UNIVERSITY
-            </h1>
-            <span className="text-xs text-gray-500 font-medium tracking-wide">
-              Student Self-Registration Portal
+    <div className="min-h-screen bg-[#f8faf9] flex flex-col justify-between">
+      {/* Top Banner */}
+      <div className="bg-dillaDarkGreen text-white py-2 px-4 sm:px-8 border-b-2 border-dillaGold shadow-xs">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-dillaGold font-serif font-bold text-xs sm:text-sm">
+              ዲላ ዩኒቨርሲቲ • DILLA UNIVERSITY
+            </span>
+            <span className="text-white/40 hidden sm:inline">|</span>
+            <span className="text-[11px] text-emerald-200 italic hidden sm:inline">
+              "University of the Green Land"
             </span>
           </div>
-        </div>
-
-        <div className="bg-blue-50 border-l-4 border-dillaNavy text-dillaNavy p-3.5 rounded-lg mb-6 text-xs sm:text-sm">
-          <strong>Notice:</strong> This registration portal is for prospective and current non-cafeteria students applying for cost-sharing registration. Campus Dean and Super Admin accounts cannot be created here.
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-3.5 rounded-lg mb-6 text-sm">
-            {error}
+          <div className="text-[11px] text-white/80 hidden md:flex items-center gap-3">
+            <span>Student Admission & Registrar Directorate</span>
           </div>
-        )}
-
-        {success && (
-          <div className="bg-green-50 border-l-4 border-green-500 text-green-700 p-3.5 rounded-lg mb-6 text-sm">
-            {success}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Full Name *
-              </label>
-              <Input
-                name="fullName"
-                placeholder="e.g. Abebe Bikila"
-                value={formData.fullName}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Student ID / Admission No. *
-              </label>
-              <Input
-                name="studentId"
-                placeholder="e.g. DUC2024-001"
-                value={formData.studentId}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Username for Login *
-              </label>
-              <Input
-                name="username"
-                placeholder="Choose username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Email Address
-              </label>
-              <Input
-                name="email"
-                type="email"
-                placeholder="student@dilla.edu.et"
-                value={formData.email}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Campus *
-              </label>
-              <Select
-                name="campus"
-                options={campuses}
-                value={formData.campus}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Department *
-              </label>
-              <Select
-                name="department"
-                options={[
-                  'Computer Science',
-                  'Information Technology',
-                  'Business & Economics',
-                  'Engineering & Technology',
-                  'Health Sciences',
-                  'Natural & Computational Sciences',
-                  'Social Sciences & Humanities',
-                  'Law',
-                  'Agriculture',
-                ]}
-                value={formData.department}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Gender</label>
-              <Select
-                name="gender"
-                options={['Male', 'Female']}
-                value={formData.gender}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Year of Study</label>
-              <Select
-                name="yearOfStudy"
-                options={['1', '2', '3', '4', '5']}
-                value={formData.yearOfStudy}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Phone</label>
-              <Input
-                name="phone"
-                type="tel"
-                placeholder="+251-9..."
-                value={formData.phone}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Password (min 6 characters) *
-              </label>
-              <div className="relative">
-                <Input
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Create password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Confirm Password *
-              </label>
-              <div className="relative">
-                <Input
-                  name="confirmPassword"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Confirm password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-gray-600">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showPassword}
-                onChange={(e) => setShowPassword(e.target.checked)}
-                className="rounded border-gray-300 text-dillaNavy focus:ring-dillaGold"
-              />
-              <span>Show password</span>
-            </label>
-          </div>
-
-          <Button type="submit" disabled={loading} className="w-full mt-2 py-2.5">
-            {loading ? 'Creating Student Account...' : 'Complete Self-Registration'}
-          </Button>
-        </form>
-
-        <div className="mt-6 pt-5 border-t border-gray-200 text-center text-sm text-gray-600">
-          Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-dillaNavy hover:text-dillaGold transition-colors">
-            Sign in here
-          </Link>
         </div>
       </div>
+
+      {/* Main Card */}
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 my-6">
+        <div className="bg-white shadow-xl rounded-2xl w-full max-w-2xl border border-slate-200 overflow-hidden">
+          {/* Card Header */}
+          <div className="bg-gradient-to-r from-dillaDarkGreen via-[#12442c] to-dillaGreen p-6 text-white text-center border-b border-dillaGold/40">
+            <div className="w-14 h-14 rounded-2xl bg-white p-1.5 mx-auto mb-2 shadow-md flex items-center justify-center">
+              <img
+                src="/dilla-logo.png"
+                alt="Dilla University Emblem"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <h1 className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-white">
+              DILLA UNIVERSITY
+            </h1>
+            <p className="text-xs font-serif text-dillaGold mt-0.5 font-medium">
+              Student Cost-Sharing Self-Registration
+            </p>
+          </div>
+
+          <div className="p-6 sm:p-8">
+            <div className="bg-emerald-50 border-l-4 border-dillaGreen p-3.5 rounded-lg mb-6 text-xs text-emerald-950 flex items-start gap-2.5">
+              <Icon name="info" className="w-4 h-4 text-dillaGreen flex-shrink-0 mt-0.5" />
+              <div>
+                <strong>Notice:</strong> This registration form is for regular undergraduate and postgraduate students applying for non-cafeteria cost-sharing subsistence verification. Administrative roles (Deans/Super Admins) must be provisioned centrally.
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-800 p-3.5 rounded-lg mb-6 text-xs sm:text-sm flex items-start gap-2 shadow-2xs">
+                <Icon name="alert-circle" className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {success && (
+              <div className="bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 p-3.5 rounded-lg mb-6 text-xs sm:text-sm flex items-start gap-2 shadow-2xs">
+                <Icon name="check-circle" className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                <span>{success}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Full Student Name *
+                  </label>
+                  <Input
+                    name="fullName"
+                    placeholder="e.g. Abebe Bikila"
+                    value={formData.fullName}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Student ID / Admission No. *
+                  </label>
+                  <Input
+                    name="studentId"
+                    placeholder="e.g. DUC2024-001"
+                    value={formData.studentId}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Username for Login *
+                  </label>
+                  <Input
+                    name="username"
+                    placeholder="Choose username"
+                    value={formData.username}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Email Address
+                  </label>
+                  <Input
+                    name="email"
+                    type="email"
+                    placeholder="student@du.edu.et"
+                    value={formData.email}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Campus *
+                  </label>
+                  <Select
+                    name="campus"
+                    options={campuses}
+                    value={formData.campus}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Department *
+                  </label>
+                  <Select
+                    name="department"
+                    options={[
+                      'Computer Science',
+                      'Information Technology',
+                      'Software Engineering',
+                      'Business & Economics',
+                      'Civil Engineering',
+                      'Electrical Engineering',
+                      'Medicine & Health Sciences',
+                      'Nursing',
+                      'Natural & Computational Sciences',
+                      'Law',
+                      'Agriculture & Natural Resources',
+                    ]}
+                    value={formData.department}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Gender *
+                  </label>
+                  <Select
+                    name="gender"
+                    options={['Male', 'Female']}
+                    value={formData.gender}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Year of Study *
+                  </label>
+                  <Select
+                    name="yearOfStudy"
+                    options={['1', '2', '3', '4', '5']}
+                    value={formData.yearOfStudy}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Phone Number
+                  </label>
+                  <Input
+                    name="phone"
+                    type="tel"
+                    placeholder="+251 9..."
+                    value={formData.phone}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Password (min 6 characters) *
+                  </label>
+                  <Input
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Create secure password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Confirm Password *
+                  </label>
+                  <Input
+                    name="confirmPassword"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Re-enter password"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-600">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showPassword}
+                    onChange={(e) => setShowPassword(e.target.checked)}
+                    className="rounded border-slate-300 text-dillaGreen focus:ring-dillaGold"
+                  />
+                  <span>Show password characters</span>
+                </label>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={loading}
+                variant="primary"
+                className="w-full mt-3 py-2.5 text-sm font-bold shadow-md"
+              >
+                {loading ? 'Creating Student Profile...' : 'Complete Registration & Access Portal'}
+              </Button>
+            </form>
+
+            <div className="mt-6 pt-5 border-t border-slate-200 text-center text-xs text-slate-600">
+              Already have an active student account?{' '}
+              <Link
+                to="/login"
+                className="font-bold text-dillaGreen hover:text-dillaDarkGreen hover:underline ml-1"
+              >
+                Sign In to Portal
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Footer compact />
     </div>
   )
 }

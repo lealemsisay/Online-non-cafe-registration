@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   }
   try {
     const { studentId, password } = req.body || {}
-    const rawId = studentId || req.body?.id || req.body?.username || req.body?.email || ''
+    const rawId = studentId || req.body?.id || req.body?.username || req.body?.email || req.body?.identifier || ''
     const id = typeof rawId === 'string' ? rawId.trim() : ''
     const pwd = typeof password === 'string' ? password : (password != null ? String(password) : '')
 
