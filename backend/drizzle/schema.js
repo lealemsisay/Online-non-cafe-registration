@@ -18,6 +18,7 @@ export const students = pgTable('student', {
   yearOfStudy: text('yearOfStudy'),
   phone: text('phone'),
   email: text('email'),
+  photoUrl: text('photo_url'),
   academicYear: text('academicYear'),
   isNonCafeteria: isNonCafeteriaEnum('is_non_cafeteria').default('false'),
   registrationStatus: registrationStatusEnum('registration_status').default('draft'),

@@ -20,6 +20,8 @@ export default async function handler(req, res) {
         allowLateRegistration: false,
         requirePdfVerification: true,
         maxPdfSizeMB: 5,
+        maxPhotoSizeMB: 8,
+        max_photo_size_mb: 8,
         registration_start_date: null,
         registration_end_date: null,
         registration_is_open: true,
@@ -34,11 +36,40 @@ export default async function handler(req, res) {
         }
       })
 
+      if (systemSettings.max_photo_size_mb) {
+        systemSettings.maxPhotoSizeMB = Number(systemSettings.max_photo_size_mb)
+      } else if (systemSettings.maxPhotoSizeMB) {
+        systemSettings.max_photo_size_mb = Number(systemSettings.maxPhotoSizeMB)
+      }
+
+      const defaultDepartments = [
+        'Computer Science',
+        'Information Technology',
+        'Software Engineering',
+        'Business Administration',
+        'Economics',
+        'Civil Engineering',
+        'Electrical Engineering',
+        'Medicine & Health Sciences',
+        'Nursing',
+        'Law',
+        'Agriculture & Natural Resources',
+      ]
+      const defaultBatches = ['2021', '2022', '2023', '2024', '2025', '2026']
+      const defaultPrograms = ['Regular Degree', 'Continuing Education', 'Postgraduate Degree']
+
+      const departments = Array.isArray(systemSettings.departments) ? systemSettings.departments : defaultDepartments
+      const batches = Array.isArray(systemSettings.batches) ? systemSettings.batches : defaultBatches
+      const programs = Array.isArray(systemSettings.programs) ? systemSettings.programs : defaultPrograms
+
       const registrationWindow = await checkRegistrationWindow(client)
 
       return res.status(200).json({
         academicYears: yearRes.rows.map(y => y.year),
         academicYearDetails: yearRes.rows,
+        departments,
+        batches,
+        programs,
         systemSettings,
         registrationWindow,
       })
@@ -73,6 +104,37 @@ export default async function handler(req, res) {
 
       // Upsert system settings if provided
       const settingsToSave = { ...(systemSettings || {}) }
+      if (body.maxPhotoSizeMB !== undefined) {
+        settingsToSave.maxPhotoSizeMB = body.maxPhotoSizeMB
+      }
+      if (body.max_photo_size_mb !== undefined) {
+        settingsToSave.max_photo_size_mb = body.max_photo_size_mb
+      }
+      if (body.departments !== undefined && Array.isArray(body.departments)) {
+        settingsToSave.departments = body.departments
+      }
+      if (body.batches !== undefined && Array.isArray(body.batches)) {
+        settingsToSave.batches = body.batches
+      }
+      if (body.programs !== undefined && Array.isArray(body.programs)) {
+        settingsToSave.programs = body.programs
+      }
+
+      // Validate max photo size limit if provided (must be between 1 MB and 10 MB)
+      const photoLimitCandidate = settingsToSave.maxPhotoSizeMB !== undefined 
+        ? settingsToSave.maxPhotoSizeMB 
+        : settingsToSave.max_photo_size_mb
+      
+      if (photoLimitCandidate !== undefined && photoLimitCandidate !== null) {
+        const parsedLimit = Number(photoLimitCandidate)
+        if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 10) {
+          return res.status(400).json({ 
+            message: 'Invalid photo upload size limit. Must be a value between 1 MB and 10 MB.' 
+          })
+        }
+        settingsToSave.maxPhotoSizeMB = parsedLimit
+        settingsToSave.max_photo_size_mb = parsedLimit
+      }
 
       // Also merge schedule if provided
       if (schedule && typeof schedule === 'object') {

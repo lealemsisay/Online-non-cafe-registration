@@ -1,9 +1,20 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import Icon from '@/components/icons/Icon'
 
 const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
   const location = useLocation()
+
+  // Close drawer on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        onToggle()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onToggle])
 
   const adminNavItems = [
     { label: 'Executive Overview', path: '/admin', icon: 'grid' },
@@ -12,6 +23,7 @@ const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
     { label: 'User & Dean Accounts', path: '/admin/users', icon: 'user-check' },
     { label: 'Reports & Analytics', path: '/admin/reports', icon: 'file-text' },
     { label: 'System Settings', path: '/admin/settings', icon: 'sliders-horizontal' },
+    { label: 'Admin Profile', path: '/admin/profile', icon: 'user' },
   ]
 
   const deanNavItems = [
@@ -20,11 +32,13 @@ const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
     { label: 'Student Directory', path: '/dean/users', icon: 'users' },
     { label: 'Campus Reports', path: '/dean/reports', icon: 'file-text' },
     { label: 'Campus Settings', path: '/dean/settings', icon: 'sliders-horizontal' },
+    { label: 'Dean Profile', path: '/dean/profile', icon: 'user' },
   ]
 
   const studentNavItems = [
     { label: 'Student Portal', path: '/', icon: 'grid' },
     { label: 'Registration Form', path: '/student/register', icon: 'upload' },
+    { label: 'My Profile', path: '/student/profile', icon: 'user' },
   ]
 
   let items = studentNavItems
@@ -45,22 +59,25 @@ const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
 
   return (
     <>
-      {/* Mobile backdrop */}
-      {isOpen && (
-        <div
-          onClick={onToggle}
-          className="fixed inset-0 bg-black/60 z-30 sm:hidden transition-opacity backdrop-blur-2xs"
-        />
-      )}
+      {/* Drawer Backdrop Overlay (click outside to close drawer) */}
+      <div
+        onClick={onToggle}
+        aria-hidden="true"
+        className={`fixed inset-0 top-16 sm:top-[5.85rem] bg-black/60 backdrop-blur-xs z-30 transition-opacity duration-300 ease-in-out cursor-pointer ${
+          isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      />
 
       <aside
-        className={`fixed left-0 top-16 sm:top-[calc(4rem+1.85rem)] h-[calc(100vh-4rem)] sm:h-[calc(100vh-4rem-1.85rem)] w-64 bg-gradient-to-b from-dillaDarkGreen via-[#0f442b] to-[#082517] text-white z-40 transition-transform duration-300 ease-in-out flex flex-col border-r border-white/10 shadow-lg ${
-          isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'
+        id="navigation-drawer"
+        aria-label="Navigation Drawer"
+        className={`fixed left-0 top-16 sm:top-[5.85rem] h-[calc(100vh-4rem)] sm:h-[calc(100vh-5.85rem)] w-72 max-w-[85vw] bg-gradient-to-b from-dillaDarkGreen via-[#0f442b] to-[#082517] text-white z-40 transition-transform duration-300 ease-in-out flex flex-col border-r border-white/10 shadow-2xl ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Sidebar Header / Branding */}
-        <div className="p-4 border-b border-white/10 bg-black/10">
-          <div className="flex items-center gap-2.5">
+        {/* Drawer Header / Branding & Close Button */}
+        <div className="p-4 border-b border-white/10 bg-black/15 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs flex-shrink-0">
               <img
                 src="/dilla-logo.png"
@@ -77,13 +94,26 @@ const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
               </p>
             </div>
           </div>
+          <button
+            onClick={onToggle}
+            className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex-shrink-0"
+            title="Close navigation drawer"
+            aria-label="Close navigation drawer"
+          >
+            <Icon name="x" className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Navigation Items */}
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
-          <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/50">
-            Main Menu
-          </p>
+          <div className="flex items-center justify-between px-3 pt-2 pb-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+              Main Menu
+            </p>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-white/10 text-emerald-200 font-mono">
+              Drawer
+            </span>
+          </div>
           {items.map((item) => {
             const isActive = location.pathname === item.path
             return (
@@ -109,7 +139,7 @@ const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
           })}
         </nav>
 
-        {/* Footer in Sidebar */}
+        {/* Footer in Drawer */}
         <div className="p-3 border-t border-white/10 mt-auto bg-black/15 space-y-2">
           {onLogout && (
             <button
@@ -122,9 +152,10 @@ const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
           )}
           <button
             onClick={onToggle}
-            className="w-full text-center text-xs text-white/60 hover:text-white py-1 sm:hidden cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 text-center text-xs text-white/60 hover:text-white py-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
           >
-            Close Navigation
+            <Icon name="x" className="w-3.5 h-3.5" />
+            <span>Close Navigation</span>
           </button>
           <div className="text-center pt-1 text-[10px] text-white/40">
             Dilla University • DU-SIMS v2.4

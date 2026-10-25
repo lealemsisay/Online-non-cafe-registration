@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react'
 import { Input, Button, Select } from '@/components/forms'
 import { StatusBadge } from '@/components/status/StatusBadge'
 import Icon from '@/components/icons/Icon'
+import ActionMenu from '@/components/common/ActionMenu'
+import ConfirmModal from '@/components/common/ConfirmModal'
+import StudentDetailModal from '@/components/students/StudentDetailModal'
+import StudentEditModal from '@/components/students/StudentEditModal'
 
 const UserManagement = () => {
   const [activeTab, setActiveTab] = useState('dean') // 'dean' | 'student'
@@ -33,6 +37,17 @@ const UserManagement = () => {
 
   // Edit user modal state
   const [editingUser, setEditingUser] = useState(null)
+
+  // Student detail/edit modals
+  const [detailStudentId, setDetailStudentId] = useState(null)
+  const [detailInitialData, setDetailInitialData] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [editStudentTarget, setEditStudentTarget] = useState(null)
+  const [showEditStudentModal, setShowEditStudentModal] = useState(false)
+
+  // Confirm delete modal
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
@@ -192,30 +207,36 @@ const UserManagement = () => {
     }
   }
 
-  const handleDeleteUser = async (user) => {
-    const id = user.id || user.studentId
-    const name = user.name || user.fullName || user.username
-    if (!window.confirm(`Are you sure you want to delete user account '${name}'? This action cannot be undone.`)) return
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id || deleteTarget.studentId
+    const name = deleteTarget.name || deleteTarget.fullName || deleteTarget.username
 
+    setIsDeleting(true)
     setError(null)
     setMessage(null)
     const token = localStorage.getItem('token')
 
     try {
-      const res = await fetch(`/api/users?id=${id}`, {
+      const res = await fetch(`/api/users?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
 
       if (res.ok) {
         setMessage(`Account '${name}' deleted successfully.`)
+        setDeleteTarget(null)
         loadData()
       } else {
         const d = await res.json()
         setError(d.message || 'Failed to delete account')
+        setDeleteTarget(null)
       }
     } catch (e) {
       setError('Network error deleting account.')
+      setDeleteTarget(null)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -459,39 +480,34 @@ const UserManagement = () => {
                       <td className="px-4 py-3.5">
                         <StatusBadge status={dean.status || 'active'} />
                       </td>
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
-                        <button
-                          onClick={() => {
-                            setResetTargetUser(dean)
-                            setCustomPassword('Dean@Dilla2026!')
-                          }}
-                          className="px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
-                          title="Reset this dean's login password"
-                        >
-                          Reset PW
-                        </button>
-                        <button
-                          onClick={() => setEditingUser(dean)}
-                          className="px-2.5 py-1 text-xs font-semibold text-dillaDarkGreen bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(dean)}
-                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                            dean.status === 'active'
-                              ? 'text-rose-700 bg-rose-50 hover:bg-rose-100'
-                              : 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
-                          }`}
-                        >
-                          {dean.status === 'active' ? 'Deactivate' : 'Reactivate'}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(dean)}
-                          className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-800 rounded-lg transition-colors cursor-pointer"
-                        >
-                          Delete
-                        </button>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex justify-end">
+                          <ActionMenu items={[
+                            {
+                              label: 'Edit Account',
+                              icon: 'edit',
+                              onClick: () => setEditingUser(dean),
+                            },
+                            {
+                              label: 'Reset Password',
+                              icon: 'key',
+                              onClick: () => { setResetTargetUser(dean); setCustomPassword('Dean@Dilla2026!') },
+                            },
+                            {
+                              label: dean.status === 'active' ? 'Deactivate Account' : 'Reactivate Account',
+                              icon: dean.status === 'active' ? 'x-circle' : 'check-circle',
+                              className: dean.status === 'active' ? 'text-amber-700' : 'text-emerald-700',
+                              onClick: () => handleToggleStatus(dean),
+                            },
+                            {
+                              label: 'Delete Dean',
+                              icon: 'trash',
+                              className: 'text-rose-700 font-bold',
+                              separator: true,
+                              onClick: () => setDeleteTarget(dean),
+                            },
+                          ]} />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -608,46 +624,56 @@ const UserManagement = () => {
                         {st.studentId}
                       </td>
                       <td className="px-4 py-3.5 font-bold text-slate-900">
-                        {st.fullName || st.studentName}
+                        <div className="flex items-center gap-2">
+                          {st.photoUrl ? (
+                            <img
+                              src={st.photoUrl.startsWith('http') ? st.photoUrl : `/api/student/photo?file=${encodeURIComponent(st.photoUrl.replace(/^\/uploads\/photos\//, ''))}`}
+                              alt={st.fullName}
+                              className="w-6 h-8 object-cover rounded border border-slate-200 flex-shrink-0"
+                              onError={(e) => { e.target.style.display = 'none' }}
+                            />
+                          ) : null}
+                          {st.fullName || st.studentName}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5 text-slate-800 font-medium">{st.campus}</td>
                       <td className="px-4 py-3.5 text-slate-700">{st.department || '-'}</td>
                       <td className="px-4 py-3.5">
                         <StatusBadge status={st.userStatus || st.status || 'active'} />
                       </td>
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
-                        <button
-                          onClick={() => {
-                            setResetTargetUser(st)
-                            setCustomPassword('Student@Dilla2026!')
-                          }}
-                          className="px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
-                          title="Authorized reset of this student's login password"
-                        >
-                          Reset PW
-                        </button>
-                        <button
-                          onClick={() => setEditingUser(st)}
-                          className="px-2.5 py-1 text-xs font-semibold text-dillaDarkGreen bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(st)}
-                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                            (st.userStatus || st.status) === 'active'
-                              ? 'text-rose-700 bg-rose-50 hover:bg-rose-100'
-                              : 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
-                          }`}
-                        >
-                          {(st.userStatus || st.status) === 'active' ? 'Deactivate' : 'Reactivate'}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(st)}
-                          className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-800 rounded-lg transition-colors cursor-pointer"
-                        >
-                          Delete
-                        </button>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex justify-end">
+                          <ActionMenu items={[
+                            {
+                              label: 'View Full Dossier',
+                              icon: 'eye',
+                              onClick: () => { setDetailStudentId(st.studentId || st.id); setDetailInitialData(st); setShowDetailModal(true) },
+                            },
+                            {
+                              label: 'Edit Student',
+                              icon: 'edit',
+                              onClick: () => { setEditStudentTarget(st); setShowEditStudentModal(true) },
+                            },
+                            {
+                              label: 'Reset Password',
+                              icon: 'key',
+                              onClick: () => { setResetTargetUser(st); setCustomPassword('Student@Dilla2026!') },
+                            },
+                            {
+                              label: (st.userStatus || st.status) === 'active' ? 'Deactivate Account' : 'Reactivate Account',
+                              icon: (st.userStatus || st.status) === 'active' ? 'x-circle' : 'check-circle',
+                              className: (st.userStatus || st.status) === 'active' ? 'text-amber-700' : 'text-emerald-700',
+                              onClick: () => handleToggleStatus(st),
+                            },
+                            {
+                              label: 'Delete Student',
+                              icon: 'trash',
+                              className: 'text-rose-700 font-bold',
+                              separator: true,
+                              onClick: () => setDeleteTarget(st),
+                            },
+                          ]} />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -685,88 +711,68 @@ const UserManagement = () => {
             </div>
 
             <div className="flex items-center gap-2 mt-5 pt-3 border-t border-slate-200">
-              <Button
-                variant="outline"
-                onClick={() => setResetTargetUser(null)}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="gold"
-                onClick={handleExecutePasswordReset}
-                className="flex-1 font-bold"
-              >
-                Confirm Reset
-              </Button>
+              <Button variant="outline" onClick={() => setResetTargetUser(null)} className="flex-1">Cancel</Button>
+              <Button variant="gold" onClick={handleExecutePasswordReset} className="flex-1 font-bold">Confirm Reset</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Edit User Modal */}
+      {/* Edit Dean Modal (basic fields) */}
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-dillaDarkGreen mb-4">
-              Edit Account Information
-            </h3>
-
+            <h3 className="text-lg font-bold text-dillaDarkGreen mb-4">Edit Account Information</h3>
             <div className="space-y-4 mb-5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Full Name</label>
-                <Input
-                  value={editingUser.name || editingUser.fullName || ''}
-                  onChange={(e) =>
-                    setEditingUser({
-                      ...editingUser,
-                      name: e.target.value,
-                      fullName: e.target.value,
-                    })
-                  }
-                  className="text-slate-900"
-                />
+                <Input value={editingUser.name || editingUser.fullName || ''} onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value, fullName: e.target.value })} className="text-slate-900" />
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Email</label>
-                <Input
-                  value={editingUser.email || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                  className="text-slate-900"
-                />
+                <Input value={editingUser.email || ''} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} className="text-slate-900" />
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Campus</label>
-                <Select
-                  name="campus"
-                  options={campuses}
-                  value={editingUser.campus || 'Main Campus'}
-                  onChange={(e) => setEditingUser({ ...editingUser, campus: e.target.value })}
-                />
+                <Select name="campus" options={campuses} value={editingUser.campus || 'Main Campus'} onChange={(e) => setEditingUser({ ...editingUser, campus: e.target.value })} />
               </div>
             </div>
-
             <div className="flex items-center gap-2 pt-3 border-t border-slate-200">
-              <Button
-                variant="outline"
-                onClick={() => setEditingUser(null)}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleSaveEdit}
-                className="flex-1 font-bold"
-              >
-                Save Changes
-              </Button>
+              <Button variant="outline" onClick={() => setEditingUser(null)} className="flex-1">Cancel</Button>
+              <Button variant="primary" onClick={handleSaveEdit} className="flex-1 font-bold">Save Changes</Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Student Detail Dossier Modal */}
+      <StudentDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        studentId={detailStudentId}
+        initialData={detailInitialData}
+      />
+
+      {/* Student Edit Modal */}
+      <StudentEditModal
+        isOpen={showEditStudentModal}
+        onClose={() => { setShowEditStudentModal(false); setEditStudentTarget(null) }}
+        student={editStudentTarget}
+        onStudentUpdated={() => { setShowEditStudentModal(false); setEditStudentTarget(null); loadData() }}
+        userRole="admin"
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteUser}
+        isLoading={isDeleting}
+        title={`Delete ${deleteTarget?.role === 'dean' ? 'Campus Dean' : 'Student'} Account`}
+        description={deleteTarget ? `You are about to permanently delete the account for ${deleteTarget.name || deleteTarget.fullName} (${deleteTarget.username || deleteTarget.studentId}). This action cannot be undone.` : ''}
+        confirmLabel="Delete Account"
+        danger
+      />
     </div>
   )
 }

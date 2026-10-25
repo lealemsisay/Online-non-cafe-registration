@@ -48,6 +48,7 @@ const StudentDashboard = () => {
               superAdminComments: s.superAdminComments,
               customFields: s.customFields || [],
               customValues: s.customValues || {},
+              photoUrl: s.photoUrl || u.photoUrl || null,
               createdAt: s.createdAt || new Date().toISOString(),
             })
           } else {
@@ -297,9 +298,19 @@ const StudentDashboard = () => {
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-dillaDarkGreen text-white flex items-center justify-center font-bold text-base shadow-xs">
-                  {student?.name?.charAt(0) || 'S'}
-                </div>
+                {student?.photoUrl ? (
+                  <div className="w-12 h-16 rounded-lg overflow-hidden border border-slate-300 shadow-xs flex-shrink-0 bg-slate-100">
+                    <img
+                      src={student.photoUrl}
+                      alt={student?.name}
+                      className="w-full h-full object-cover object-top"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-dillaDarkGreen text-white flex items-center justify-center font-bold text-base shadow-xs">
+                    {student?.name?.charAt(0) || 'S'}
+                  </div>
+                )}
                 <div>
                   <h2 className="text-base font-bold text-slate-900">{student?.name}</h2>
                   <p className="text-xs text-slate-500 font-mono">Admission No: {student?.id}</p>

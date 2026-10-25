@@ -27,6 +27,9 @@ import Settings from '@/pages/super-admin/Settings'
 import LoginPage from '@/pages/auth/Login'
 import StudentRegister from '@/pages/auth/StudentRegister'
 
+// Profile page
+import ProfilePage from '@/pages/profile/ProfilePage'
+
 // Helper to get active user details from storage
 function getAuthUser() {
   const role = localStorage.getItem('userRole')
@@ -120,7 +123,7 @@ const AppLayout = ({ children }) => {
             onLogout={handleLogout}
           />
         )}
-        <div className={`flex-1 flex flex-col transition-all duration-300 pt-16 sm:pt-[5.85rem] ${user.role ? 'sm:pl-64' : ''}`}>
+        <div className="flex-1 flex flex-col transition-all duration-300 pt-16 sm:pt-[5.85rem]">
           <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto">
             {children}
           </main>
@@ -318,6 +321,46 @@ const App = () => {
               <ProtectedRoute role="admin">
                 <Settings />
               </ProtectedRoute>
+            }
+          />
+
+          {/* Profile routes for all roles */}
+          <Route
+            path="/student/profile"
+            element={
+              <ProtectedRoute role="student">
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dean/profile"
+            element={
+              <ProtectedRoute role="dean">
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/profile"
+            element={
+              <ProtectedRoute role="admin">
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              getAuthUser().role === 'admin' ? (
+                <Navigate to="/admin/profile" replace />
+              ) : getAuthUser().role === 'dean' ? (
+                <Navigate to="/dean/profile" replace />
+              ) : getAuthUser().role === 'student' ? (
+                <Navigate to="/student/profile" replace />
+              ) : (
+                <Navigate to="/login" replace />
+              )
             }
           />
 

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Input, Button } from '@/components/forms'
 import Icon from '@/components/icons/Icon'
+import PassportPhotoUpload from '@/components/forms/PassportPhotoUpload'
 
 const RegistrationForm = ({
   initialData = {},
@@ -23,14 +24,34 @@ const RegistrationForm = ({
     isNonCafeteria: initialData?.isNonCafeteria !== false,
     declaration: false,
     pdfFileName: 'cost_sharing_registration_slip.pdf',
+    photoUrl: initialData?.photoUrl || '',
   })
 
   // Dynamic Custom Fields
   const [customFields, setCustomFields] = useState([])
   const [customValues, setCustomValues] = useState(initialData?.customValues || {})
 
+  const defaultDepartments = [
+    'Computer Science',
+    'Information Technology',
+    'Software Engineering',
+    'Business Administration',
+    'Economics',
+    'Civil Engineering',
+    'Electrical Engineering',
+    'Medicine & Health Sciences',
+    'Nursing',
+    'Law',
+    'Agriculture & Natural Resources',
+  ]
+  const defaultBatches = ['2021', '2022', '2023', '2024', '2025', '2026']
+  const defaultPrograms = ['Regular Degree', 'Continuing Education', 'Postgraduate Degree']
+
   const [campusList, setCampusList] = useState(['Main Campus', 'Odaya Campus', 'Haru Campus'])
   const [academicYears, setAcademicYears] = useState(['2023/2024', '2024/2025'])
+  const [departmentsList, setDepartmentsList] = useState(defaultDepartments)
+  const [batchesList, setBatchesList] = useState(defaultBatches)
+  const [programsList, setProgramsList] = useState(defaultPrograms)
   const [uploadProgress, setUploadProgress] = useState(100)
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(false)
@@ -69,6 +90,15 @@ const RegistrationForm = ({
       .then((data) => {
         if (data?.academicYears && data.academicYears.length > 0) {
           setAcademicYears(data.academicYears)
+        }
+        if (data?.departments && data.departments.length > 0) {
+          setDepartmentsList(data.departments)
+        }
+        if (data?.batches && data.batches.length > 0) {
+          setBatchesList(data.batches)
+        }
+        if (data?.programs && data.programs.length > 0) {
+          setProgramsList(data.programs)
         }
       })
       .catch(() => {})
@@ -165,6 +195,7 @@ const RegistrationForm = ({
       await onSubmit({
         ...formData,
         customValues,
+        photoUrl: formData.photoUrl || '',
       })
     } finally {
       setIsSubmitting(false)
@@ -203,11 +234,33 @@ const RegistrationForm = ({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* 1. Student Identification */}
+        {/* 1. Passport Photo Upload */}
         <div>
           <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
             <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
               1
+            </span>
+            <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
+              Passport-Size Photo
+            </h2>
+          </div>
+          <p className="text-xs text-slate-600 mb-3">
+            Upload a clear, recent passport-size photograph. The photo will be displayed on your registration record and viewed by the Campus Dean and Admin during verification.
+          </p>
+          <div className="flex justify-center">
+            <PassportPhotoUpload
+              currentPhotoUrl={formData.photoUrl}
+              studentId={formData.studentId || 'new'}
+              onPhotoSaved={(url) => setFormData((prev) => ({ ...prev, photoUrl: url }))}
+            />
+          </div>
+        </div>
+
+        {/* 2. Student Identification */}
+        <div>
+          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
+            <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
+              2
             </span>
             <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
               Student Identification
@@ -280,11 +333,11 @@ const RegistrationForm = ({
           </div>
         </div>
 
-        {/* 2. Academic Details */}
+        {/* 3. Academic Details */}
         <div>
           <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
             <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
-              2
+              3
             </span>
             <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
               Academic Program & Contact
@@ -302,17 +355,11 @@ const RegistrationForm = ({
                 onChange={handleChange}
                 className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
-                <option value="Computer Science">Computer Science</option>
-                <option value="Information Technology">Information Technology</option>
-                <option value="Software Engineering">Software Engineering</option>
-                <option value="Business Administration">Business Administration</option>
-                <option value="Economics">Economics</option>
-                <option value="Civil Engineering">Civil Engineering</option>
-                <option value="Electrical Engineering">Electrical Engineering</option>
-                <option value="Medicine & Health Sciences">Medicine & Health Sciences</option>
-                <option value="Nursing">Nursing</option>
-                <option value="Law">Law</option>
-                <option value="Agriculture & Natural Resources">Agriculture</option>
+                {departmentsList.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -326,9 +373,11 @@ const RegistrationForm = ({
                 onChange={handleChange}
                 className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen text-sm"
               >
-                <option value="Regular Degree">Regular Degree</option>
-                <option value="Continuing Education">Continuing Education</option>
-                <option value="Postgraduate Degree">Postgraduate</option>
+                {programsList.map((prog) => (
+                  <option key={prog} value={prog}>
+                    {prog}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -398,108 +447,276 @@ const RegistrationForm = ({
           </div>
         </div>
 
-        {/* 3. Campus Custom Information */}
-        {customFields.length > 0 && (
+        {/* 4. Campus Custom Information */}
+        {customFields.filter((f) => f.visibleStudent !== false).length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
               <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
-                3
+                4
               </span>
               <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Additional Campus-Specific Information
               </h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-              {customFields.map((field) => {
-                const val = customValues[field.fieldKey] || ''
+              {[...customFields]
+                .filter((f) => f.visibleStudent !== false)
+                .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+                .map((field) => {
+                  const val = customValues[field.fieldKey] !== undefined ? customValues[field.fieldKey] : ''
+                  const isLocked = Boolean(initialData?.studentId && field.isStudentEditable === false)
+                  const fieldPlaceholder = field.placeholder || `Enter ${field.label}...`
 
-                if (field.fieldType === 'textarea') {
-                  return (
-                    <div key={field.id} className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  const renderLabel = () => (
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                         {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
                       </label>
-                      <textarea
-                        rows={3}
-                        value={val}
-                        onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
-                        placeholder={`Enter ${field.label}...`}
-                        required={field.isRequired}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
-                      />
-                    </div>
-                  )
-                }
-
-                if (field.fieldType === 'select') {
-                  const opts = Array.isArray(field.options) ? field.options : []
-                  return (
-                    <div key={field.id}>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
-                      </label>
-                      <select
-                        value={val}
-                        onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
-                        required={field.isRequired}
-                        className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
-                      >
-                        <option value="">-- Select {field.label} --</option>
-                        {opts.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )
-                }
-
-                if (field.fieldType === 'checkbox') {
-                  return (
-                    <div key={field.id} className="flex items-center pt-5">
-                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={val === 'true' || val === true}
-                          onChange={(e) =>
-                            handleCustomFieldChange(field.fieldKey, e.target.checked ? 'true' : 'false')
-                          }
-                          className="rounded border-slate-300 text-dillaGreen focus:ring-dillaGold w-4 h-4"
-                        />
-                        <span>
-                          {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                      {isLocked && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                          Institution Locked
                         </span>
-                      </label>
+                      )}
                     </div>
                   )
-                }
 
-                return (
-                  <div key={field.id}>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
-                    </label>
-                    <Input
-                      type={field.fieldType === 'number' ? 'number' : field.fieldType === 'date' ? 'date' : 'text'}
-                      value={val}
-                      onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
-                      placeholder={`Enter ${field.label}`}
-                      required={field.isRequired}
-                      className="text-slate-900 text-xs"
-                    />
-                  </div>
-                )
-              })}
+                  const renderHelp = () =>
+                    field.helpText ? (
+                      <p className="text-[11px] text-slate-500 mt-1 leading-tight">{field.helpText}</p>
+                    ) : null
+
+                  if (field.fieldType === 'textarea') {
+                    return (
+                      <div key={field.id || field.fieldKey} className="md:col-span-2">
+                        {renderLabel()}
+                        <textarea
+                          rows={3}
+                          value={val}
+                          disabled={isLocked}
+                          onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                          placeholder={fieldPlaceholder}
+                          required={field.isRequired}
+                          className={`w-full px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen ${
+                            isLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200' : 'bg-white text-slate-900 border-slate-300'
+                          }`}
+                        />
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  if (field.fieldType === 'select') {
+                    const opts = Array.isArray(field.options) ? field.options : []
+                    return (
+                      <div key={field.id || field.fieldKey}>
+                        {renderLabel()}
+                        <select
+                          value={val}
+                          disabled={isLocked}
+                          onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                          required={field.isRequired}
+                          className={`w-full h-10 px-3 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen ${
+                            isLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200' : 'bg-white text-slate-900 border-slate-300'
+                          }`}
+                        >
+                          <option value="">-- Select {field.label} --</option>
+                          {opts.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  if (field.fieldType === 'radio') {
+                    const opts = Array.isArray(field.options) ? field.options : []
+                    return (
+                      <div key={field.id || field.fieldKey} className="md:col-span-2">
+                        {renderLabel()}
+                        <div className="flex flex-wrap gap-4 pt-1">
+                          {opts.map((opt) => (
+                            <label key={opt} className={`flex items-center gap-2 text-xs font-medium cursor-pointer ${isLocked ? 'text-slate-400' : 'text-slate-700'}`}>
+                              <input
+                                type="radio"
+                                name={field.fieldKey}
+                                value={opt}
+                                checked={val === opt}
+                                disabled={isLocked}
+                                onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                                className="text-dillaGreen focus:ring-dillaGold h-4 w-4"
+                                required={field.isRequired && !val}
+                              />
+                              <span>{opt}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  if (field.fieldType === 'checkbox') {
+                    return (
+                      <div key={field.id || field.fieldKey} className="flex flex-col justify-center pt-2">
+                        <label className={`flex items-center gap-2 cursor-pointer text-xs font-bold ${isLocked ? 'text-slate-400' : 'text-slate-700'}`}>
+                          <input
+                            type="checkbox"
+                            checked={val === 'true' || val === true}
+                            disabled={isLocked}
+                            onChange={(e) =>
+                              handleCustomFieldChange(field.fieldKey, e.target.checked ? 'true' : 'false')
+                            }
+                            className="rounded border-slate-300 text-dillaGreen focus:ring-dillaGold w-4 h-4"
+                          />
+                          <span>
+                            {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                          </span>
+                        </label>
+                        {isLocked && (
+                          <span className="text-[10px] text-amber-700 mt-1 font-medium">Institution Locked</span>
+                        )}
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  if (field.fieldType === 'department') {
+                    return (
+                      <div key={field.id || field.fieldKey}>
+                        {renderLabel()}
+                        <select
+                          value={val}
+                          disabled={isLocked}
+                          onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                          required={field.isRequired}
+                          className={`w-full h-10 px-3 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen ${
+                            isLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200' : 'bg-white text-slate-900 border-slate-300'
+                          }`}
+                        >
+                          <option value="">-- Select Department --</option>
+                          {departmentsList.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  if (field.fieldType === 'batch') {
+                    return (
+                      <div key={field.id || field.fieldKey}>
+                        {renderLabel()}
+                        <select
+                          value={val}
+                          disabled={isLocked}
+                          onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                          required={field.isRequired}
+                          className={`w-full h-10 px-3 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen ${
+                            isLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200' : 'bg-white text-slate-900 border-slate-300'
+                          }`}
+                        >
+                          <option value="">-- Select Batch --</option>
+                          {batchesList.map((b) => (
+                            <option key={b} value={b}>
+                              Batch {b}
+                            </option>
+                          ))}
+                        </select>
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  if (field.fieldType === 'academic_year') {
+                    return (
+                      <div key={field.id || field.fieldKey}>
+                        {renderLabel()}
+                        <select
+                          value={val}
+                          disabled={isLocked}
+                          onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                          required={field.isRequired}
+                          className={`w-full h-10 px-3 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen ${
+                            isLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200' : 'bg-white text-slate-900 border-slate-300'
+                          }`}
+                        >
+                          <option value="">-- Select Academic Year --</option>
+                          {academicYears.map((ay) => (
+                            <option key={ay} value={ay}>
+                              {ay}
+                            </option>
+                          ))}
+                        </select>
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  if (field.fieldType === 'file') {
+                    return (
+                      <div key={field.id || field.fieldKey} className="md:col-span-2">
+                        {renderLabel()}
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="file"
+                            disabled={isLocked}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0]
+                              if (f) handleCustomFieldChange(field.fieldKey, f.name)
+                            }}
+                            className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-dillaGreen file:text-white hover:file:bg-dillaDarkGreen cursor-pointer"
+                          />
+                        </div>
+                        {val && <p className="text-[11px] text-emerald-700 font-medium mt-1">Attached: {val}</p>}
+                        {renderHelp()}
+                      </div>
+                    )
+                  }
+
+                  const inputType =
+                    field.fieldType === 'number'
+                      ? 'number'
+                      : field.fieldType === 'email'
+                      ? 'email'
+                      : field.fieldType === 'phone' || field.fieldType === 'tel'
+                      ? 'tel'
+                      : field.fieldType === 'date'
+                      ? 'date'
+                      : 'text'
+
+                  return (
+                    <div key={field.id || field.fieldKey}>
+                      {renderLabel()}
+                      <Input
+                        type={inputType}
+                        value={val}
+                        disabled={isLocked}
+                        onChange={(e) => handleCustomFieldChange(field.fieldKey, e.target.value)}
+                        placeholder={fieldPlaceholder}
+                        required={field.isRequired}
+                        className={`text-xs ${
+                          isLocked ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'text-slate-900 bg-white'
+                        }`}
+                      />
+                      {renderHelp()}
+                    </div>
+                  )
+                })}
             </div>
           </div>
         )}
 
-        {/* 4. Document Upload */}
+        {/* 5. Document Upload */}
         <div>
           <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
             <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
-              {customFields.length > 0 ? '4' : '3'}
+              {customFields.length > 0 ? '5' : '4'}
             </span>
             <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
               Verification Document Upload (PDF Registration Slip)

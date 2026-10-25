@@ -41,6 +41,8 @@ const RegisterPage = () => {
               academicYear: s.academicYear || '2023/2024',
               phone: s.phone || '',
               email: s.email || '',
+              photoUrl: s.photoUrl || '',
+              customValues: s.customValues || data.customValues || {},
               isNonCafeteria: true,
             })
           }

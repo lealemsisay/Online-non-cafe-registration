@@ -12,7 +12,9 @@
     "setup-db": "node scripts/setup-db.mjs",
     "seed": "node scripts/seed-dev-accounts.mjs",
     "test:auth": "node scripts/verify-auth-flows.mjs",
+    "test:phase1": "node scripts/verify-phase1-fixes.mjs",
     "test:phase2": "node scripts/verify-phase2-flows.mjs",
+    "test:phase2-builder": "node scripts/verify-phase2-builder.mjs",
     "test:phase3": "node scripts/verify-phase3-flows.mjs"
   },
   "keywords": [],

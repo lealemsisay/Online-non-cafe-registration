@@ -36,57 +36,86 @@ export default async function handler(req, res) {
       email,
       academicYear,
       isNonCafeteria,
+      photoUrl,
       customValues,
     } = body
 
-    if (!studentId || !fullName || !gender || !campus || !department || !program || !academicYear) {
+    const effectiveGender = gender || 'Male'
+    if (!studentId || !fullName || !campus || !department || !program || !academicYear) {
       return res.status(400).json({ message: 'Missing required fields' })
     }
 
     const client = await pool.connect()
     try {
-      const existing = await client.query('SELECT student_id FROM student WHERE student_id = $1', [studentId])
+      const existing = await client.query('SELECT student_id, photo_url FROM student WHERE student_id = $1', [studentId])
 
       let savedStudent
       if (existing.rows.length > 0) {
         // Update existing record
+        const finalPhotoUrl = photoUrl || existing.rows[0].photo_url || null
         const updateRes = await client.query(
           `UPDATE student
-           SET full_name = $1, gender = $2, campus = $3, department = $4, program = $5, year_of_study = $6, phone = $7, email = $8, academic_year = $9, is_non_cafeteria = $10, registration_status = 'submitted', application_status = 'submitted', updated_at = NOW()
-           WHERE student_id = $11
-           RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus"`,
-          [fullName, gender, campus, department, program, yearOfStudy || '1', phone || '', email || '', academicYear, isNonCafeteria === true, studentId]
+           SET full_name = $1, gender = $2, campus = $3, department = $4, program = $5, year_of_study = $6, phone = $7, email = $8, academic_year = $9, is_non_cafeteria = $10, photo_url = COALESCE($11, photo_url), registration_status = 'submitted', application_status = 'submitted', updated_at = NOW()
+           WHERE student_id = $12
+           RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus"`,
+          [fullName, gender, campus, department, program, yearOfStudy || '1', phone || '', email || '', academicYear, isNonCafeteria === true, finalPhotoUrl, studentId]
         )
         savedStudent = updateRes.rows[0]
       } else {
         const result = await client.query(
-          `INSERT INTO student (student_id, full_name, gender, campus, department, program, year_of_study, phone, email, academic_year, is_non_cafeteria, registration_status, application_status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'submitted', 'submitted')
-           RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus"`,
-          [studentId, fullName, gender, campus, department, program, yearOfStudy || '1', phone || '', email || '', academicYear, isNonCafeteria === true]
+          `INSERT INTO student (student_id, full_name, gender, campus, department, program, year_of_study, phone, email, photo_url, academic_year, is_non_cafeteria, registration_status, application_status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'submitted', 'submitted')
+           RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus"`,
+          [studentId, fullName, gender, campus, department, program, yearOfStudy || '1', phone || '', email || '', photoUrl || null, academicYear, isNonCafeteria === true]
         )
         savedStudent = result.rows[0]
       }
 
-      // Save custom fields if provided
-      if (customValues && typeof customValues === 'object') {
-        const defsRes = await client.query(
-          `SELECT id, field_key, is_required FROM custom_field_definition 
-           WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))`,
-          [campus]
-        )
+      // Check and save custom registration fields
+      const defsRes = await client.query(
+        `SELECT id, field_key, label, field_type, options, is_required FROM custom_field_definition 
+         WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))`,
+        [campus]
+      )
 
-        for (const def of defsRes.rows) {
-          const val = customValues[def.field_key]
-          if (val !== undefined && val !== null) {
-            await client.query(
-              `INSERT INTO student_custom_value (student_id, field_id, field_key, value, updated_at)
-               VALUES ($1, $2, $3, $4, NOW())
-               ON CONFLICT (student_id, field_id) DO UPDATE
-               SET value = EXCLUDED.value, updated_at = NOW()`,
-              [studentId, def.id, def.field_key, typeof val === 'boolean' ? (val ? 'true' : 'false') : String(val).trim()]
-            )
+      const valuesObj = customValues && typeof customValues === 'object' ? customValues : {}
+      for (const def of defsRes.rows) {
+        const val = valuesObj[def.field_key]
+        const valStr = val !== undefined && val !== null ? String(val).trim() : ''
+
+        if (def.is_required && valStr === '') {
+          return res.status(400).json({
+            message: `Registration field '${def.label || def.field_key}' is required.`,
+            fieldKey: def.field_key,
+          })
+        }
+
+        if (valStr !== '') {
+          if (def.field_type === 'number' && isNaN(Number(valStr))) {
+            return res.status(400).json({
+              message: `Field '${def.label || def.field_key}' must be a valid number.`,
+              fieldKey: def.field_key,
+            })
           }
+          if (['select', 'radio'].includes(def.field_type)) {
+            const allowed = Array.isArray(def.options) ? def.options : []
+            if (allowed.length > 0 && !allowed.includes(valStr)) {
+              return res.status(400).json({
+                message: `Field '${def.label || def.field_key}' has an invalid option '${valStr}'.`,
+                fieldKey: def.field_key,
+              })
+            }
+          }
+        }
+
+        if (val !== undefined && val !== null) {
+          await client.query(
+            `INSERT INTO student_custom_value (student_id, field_id, field_key, value, updated_at)
+             VALUES ($1, $2, $3, $4, NOW())
+             ON CONFLICT (student_id, field_id) DO UPDATE
+             SET value = EXCLUDED.value, updated_at = NOW()`,
+            [studentId, def.id, def.field_key, typeof val === 'boolean' ? (val ? 'true' : 'false') : valStr]
+          )
         }
       }
 

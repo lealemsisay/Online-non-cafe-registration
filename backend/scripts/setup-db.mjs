@@ -45,12 +45,18 @@ async function run() {
 
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS alt_password_hash text;
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
+    ALTER TABLE app_user ADD COLUMN IF NOT EXISTS photo_url text;
+    ALTER TABLE app_user ADD COLUMN IF NOT EXISTS phone text;
 
     CREATE TABLE IF NOT EXISTS system_setting (
       key text PRIMARY KEY,
       value text NOT NULL,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+
+    INSERT INTO system_setting (key, value)
+    VALUES ('max_photo_size_mb', '8')
+    ON CONFLICT (key) DO NOTHING;
 
     CREATE TABLE IF NOT EXISTS student (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -78,6 +84,8 @@ async function run() {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE student ADD COLUMN IF NOT EXISTS photo_url text;
 
     CREATE TABLE IF NOT EXISTS campus (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -129,6 +137,26 @@ async function run() {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE custom_field_definition DROP CONSTRAINT IF EXISTS custom_field_definition_field_type_check;
+    ALTER TABLE custom_field_definition ADD CONSTRAINT custom_field_definition_field_type_check 
+      CHECK (field_type IN ('text', 'textarea', 'number', 'email', 'phone', 'tel', 'date', 'select', 'radio', 'checkbox', 'file', 'department', 'batch', 'academic_year'));
+
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS placeholder text;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS help_text text;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS is_student_editable boolean NOT NULL DEFAULT true;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS visible_student boolean NOT NULL DEFAULT true;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS visible_admin boolean NOT NULL DEFAULT true;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS visible_dean boolean NOT NULL DEFAULT true;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS display_order integer NOT NULL DEFAULT 0;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS validation_rules jsonb DEFAULT '{}'::jsonb;
+
+    INSERT INTO system_setting (key, value)
+    VALUES 
+      ('departments', '["Computer Science", "Information Technology", "Software Engineering", "Business Administration", "Economics", "Civil Engineering", "Electrical Engineering", "Medicine & Health Sciences", "Nursing", "Law", "Agriculture & Natural Resources"]'),
+      ('batches', '["2021", "2022", "2023", "2024", "2025", "2026"]'),
+      ('programs', '["Regular Degree", "Continuing Education", "Postgraduate Degree"]')
+    ON CONFLICT (key) DO NOTHING;
 
     CREATE TABLE IF NOT EXISTS student_custom_value (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

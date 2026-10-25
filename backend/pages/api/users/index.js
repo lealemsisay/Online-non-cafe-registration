@@ -49,7 +49,7 @@ export default async function handler(req, res) {
       // 2. Querying Students & Applications
       let query = `
         SELECT s.id, s.student_id AS "studentId", s.full_name AS "fullName", s.gender, s.campus, 
-               s.department, s.program, s.year_of_study AS "yearOfStudy", s.phone, s.email, 
+               s.department, s.program, s.year_of_study AS "yearOfStudy", s.phone, s.email, s.photo_url AS "photoUrl",
                s.academic_year AS "academicYear", s.application_status AS "applicationStatus", 
                s.registration_status AS "registrationStatus", s.approval_status AS "approvalStatus", 
                s.dean_review AS "deanFinding", s.dean_comments AS "deanComments", 
@@ -101,6 +101,7 @@ export default async function handler(req, res) {
         deanFinding: u.deanFinding,
         deanComments: u.deanComments,
         superAdminComments: u.superAdminComments,
+        photoUrl: u.photoUrl || null,
         createdAt: u.createdAt,
         submittedAt: u.createdAt,
       }))
@@ -206,12 +207,29 @@ export default async function handler(req, res) {
     }
   }
 
-  // PUT: Update user details or active/inactive status
+  // PUT: Update user details, student fields, or active/inactive status
   if (req.method === 'PUT') {
     const client = await pool.connect()
     try {
       const body = req.body || {}
-      const { id, userId, username, name, email, campus, status } = body
+      const {
+        id,
+        userId,
+        username,
+        name,
+        fullName,
+        email,
+        campus,
+        status,
+        department,
+        program,
+        gender,
+        yearOfStudy,
+        phone,
+        photoUrl,
+        academicYear,
+        isNonCafeteria,
+      } = body
       const targetId = (id || userId || username || '').trim()
 
       if (!targetId) {
@@ -224,13 +242,22 @@ export default async function handler(req, res) {
         [targetId]
       )
 
-      if (targetRes.rows.length === 0) {
-        return res.status(404).json({ message: 'User not found' })
+      let target = targetRes.rows[0]
+
+      // If not in app_user, check student table
+      if (!target) {
+        const stRes = await client.query(
+          `SELECT id, student_id AS "username", full_name, 'student' AS "role", campus, email, 'active' AS "status" FROM student WHERE id::text = $1 OR LOWER(student_id) = LOWER($1)`,
+          [targetId]
+        )
+        target = stRes.rows[0]
       }
 
-      const target = targetRes.rows[0]
+      if (!target) {
+        return res.status(404).json({ message: 'User or student record not found' })
+      }
 
-      // 2. ENFORCE TASK 9: Lower roles cannot manage Super Admin accounts
+      // 2. Lower roles cannot manage Super Admin accounts
       if (target.role === 'admin' && auth.user.role !== 'admin') {
         return res.status(403).json({ message: 'Forbidden: Lower roles cannot modify Super Admin accounts.' })
       }
@@ -248,35 +275,89 @@ export default async function handler(req, res) {
         }
       }
 
-      // 3. Update app_user
-      const updatedUserRes = await client.query(
-        `UPDATE app_user
-         SET full_name = COALESCE($1, full_name),
-             email = COALESCE($2, email),
-             campus = COALESCE($3, campus),
-             status = COALESCE($4, status),
-             updated_at = NOW()
-         WHERE id = $5
-         RETURNING id, username, full_name AS "name", email, campus, role, status`,
-        [name || null, email || null, campus || null, status || null, target.id]
-      )
+      const cleanName = fullName || name || null
 
-      // Also update student table if this was a student
-      if (target.role === 'student') {
-        await client.query(
-          `UPDATE student
+      // 3. Update app_user if present
+      let updatedUser = null
+      const userExists = await client.query('SELECT id FROM app_user WHERE id::text = $1 OR LOWER(username) = LOWER($1)', [targetId])
+      if (userExists.rows.length > 0) {
+        const updatedUserRes = await client.query(
+          `UPDATE app_user
            SET full_name = COALESCE($1, full_name),
-               campus = COALESCE($2, campus),
-               email = COALESCE($3, email),
+               email = COALESCE($2, email),
+               campus = COALESCE($3, campus),
+               status = COALESCE($4, status),
+               photo_url = COALESCE($5, photo_url),
                updated_at = NOW()
-           WHERE student_id = $4`,
-          [name || null, campus || null, email || null, target.username]
+           WHERE id = $6
+           RETURNING id, username, full_name AS "name", email, campus, role, status`,
+          [cleanName, email || null, campus || null, status || null, photoUrl || null, userExists.rows[0].id]
         )
+        updatedUser = updatedUserRes.rows[0]
+      }
+
+      // 4. Update student table if target is student
+      if (target.role === 'student') {
+        const studentUpdates = []
+        const studentParams = []
+
+        if (cleanName) {
+          studentParams.push(cleanName)
+          studentUpdates.push(`full_name = $${studentParams.length}`)
+        }
+        if (campus) {
+          studentParams.push(campus)
+          studentUpdates.push(`campus = $${studentParams.length}`)
+        }
+        if (email) {
+          studentParams.push(email)
+          studentUpdates.push(`email = $${studentParams.length}`)
+        }
+        if (department) {
+          studentParams.push(department)
+          studentUpdates.push(`department = $${studentParams.length}`)
+        }
+        if (program) {
+          studentParams.push(program)
+          studentUpdates.push(`program = $${studentParams.length}`)
+        }
+        if (gender) {
+          studentParams.push(gender)
+          studentUpdates.push(`gender = $${studentParams.length}`)
+        }
+        if (yearOfStudy) {
+          studentParams.push(yearOfStudy)
+          studentUpdates.push(`year_of_study = $${studentParams.length}`)
+        }
+        if (phone) {
+          studentParams.push(phone)
+          studentUpdates.push(`phone = $${studentParams.length}`)
+        }
+        if (photoUrl) {
+          studentParams.push(photoUrl)
+          studentUpdates.push(`photo_url = $${studentParams.length}`)
+        }
+        if (academicYear) {
+          studentParams.push(academicYear)
+          studentUpdates.push(`academic_year = $${studentParams.length}`)
+        }
+        if (isNonCafeteria !== undefined && isNonCafeteria !== null) {
+          studentParams.push(Boolean(isNonCafeteria))
+          studentUpdates.push(`is_non_cafeteria = $${studentParams.length}`)
+        }
+
+        if (studentUpdates.length > 0) {
+          studentParams.push(target.username || targetId)
+          await client.query(
+            `UPDATE student SET ${studentUpdates.join(', ')}, updated_at = NOW() WHERE student_id = $${studentParams.length} OR id::text = $${studentParams.length}`,
+            studentParams
+          )
+        }
       }
 
       return res.status(200).json({
-        message: 'User updated successfully',
-        user: updatedUserRes.rows[0],
+        message: 'User and student records updated successfully',
+        user: updatedUser || target,
       })
     } catch (error) {
       console.error('Error updating user:', error)
@@ -286,48 +367,76 @@ export default async function handler(req, res) {
     }
   }
 
-  // DELETE: Delete user (Super Admin only)
+  // DELETE: Delete user or student record (Super Admin only, or Dean for campus students)
   if (req.method === 'DELETE') {
-    if (auth.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Forbidden: Only Super Admin can delete user accounts.' })
+    if (auth.user.role !== 'admin' && auth.user.role !== 'dean') {
+      return res.status(403).json({ message: 'Forbidden: Insufficient permissions to delete records.' })
     }
 
     const client = await pool.connect()
     try {
-      const targetId = (req.query?.id || req.body?.id || req.body?.username || '').trim()
+      const targetId = (req.query?.id || req.body?.id || req.body?.username || req.body?.studentId || '').trim()
       if (!targetId) {
-        return res.status(400).json({ message: 'User ID is required' })
+        return res.status(400).json({ message: 'User ID or Student ID is required' })
       }
 
-      // Fetch target
-      const targetRes = await client.query(
-        'SELECT id, username, role FROM app_user WHERE id::text = $1 OR username = $1',
+      // 1. Fetch target from app_user or student
+      let targetRes = await client.query(
+        'SELECT id, username, role, campus FROM app_user WHERE id::text = $1 OR LOWER(username) = LOWER($1)',
         [targetId]
       )
 
-      if (targetRes.rows.length === 0) {
-        return res.status(404).json({ message: 'User not found' })
+      let target = targetRes.rows[0]
+      if (!target) {
+        const stRes = await client.query(
+          `SELECT id, student_id AS "username", 'student' AS "role", campus FROM student WHERE id::text = $1 OR LOWER(student_id) = LOWER($1)`,
+          [targetId]
+        )
+        target = stRes.rows[0]
       }
 
-      const target = targetRes.rows[0]
+      if (!target) {
+        return res.status(404).json({ message: 'Record not found' })
+      }
+
+      // Campus Dean can only delete students within their own campus
+      if (auth.user.role === 'dean') {
+        if (target.role !== 'student') {
+          return res.status(403).json({ message: 'Forbidden: Campus Dean can only delete student records.' })
+        }
+        if (target.campus && target.campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
+          return res.status(403).json({ message: 'Forbidden: Cannot delete student from another campus.' })
+        }
+      }
 
       // Prevent Super Admin from deleting own active account
-      if (target.id === auth.user.id) {
-        return res.status(400).json({ message: 'Cannot delete your own active Super Admin account.' })
+      if (target.id === auth.user.id || target.username === auth.user.username) {
+        return res.status(400).json({ message: 'Cannot delete your own active account.' })
       }
 
-      // Delete from app_user
-      await client.query('DELETE FROM app_user WHERE id = $1', [target.id])
+      // 2. Clean up associated records
+      const studentIdentifier = target.username || targetId
 
-      // If student, delete from student table as well
-      if (target.role === 'student') {
-        await client.query('DELETE FROM student WHERE student_id = $1 OR id::text = $2', [target.username, target.id])
+      try {
+        await client.query('DELETE FROM student_custom_value WHERE student_id = $1', [studentIdentifier])
+        await client.query('DELETE FROM document_metadata WHERE student_id = $1', [studentIdentifier])
+      } catch (e) {
+        // Continue
       }
 
-      return res.status(200).json({ success: true, message: `User '${target.username}' deleted successfully.` })
+      // 3. Delete from student table
+      await client.query('DELETE FROM student WHERE student_id = $1 OR id::text = $2', [studentIdentifier, target.id || targetId])
+
+      // 4. Delete from app_user if present
+      await client.query('DELETE FROM app_user WHERE id::text = $1 OR username = $2', [target.id || targetId, studentIdentifier])
+
+      return res.status(200).json({
+        success: true,
+        message: `Record '${target.username || targetId}' was deleted successfully.`,
+      })
     } catch (error) {
-      console.error('Error deleting user:', error)
-      return res.status(500).json({ message: 'Error deleting user' })
+      console.error('Error deleting record:', error)
+      return res.status(500).json({ message: 'Error deleting record' })
     } finally {
       client.release()
     }

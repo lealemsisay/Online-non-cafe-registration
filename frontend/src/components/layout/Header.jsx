@@ -77,11 +77,20 @@ const Header = ({ isSidebarOpen, onToggleSidebar, user, onLogout }) => {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={onToggleSidebar}
-              className="p-2 rounded-lg hover:bg-slate-100 text-dillaGreen focus:outline-none focus:ring-2 focus:ring-dillaGold transition-colors cursor-pointer"
-              aria-label="Toggle sidebar"
-              title="Toggle Navigation Menu"
+              className={`p-2 sm:p-2.5 rounded-xl border transition-all duration-200 cursor-pointer flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-dillaGold ${
+                isSidebarOpen
+                  ? 'bg-amber-50 border-dillaGold text-dillaDarkGreen ring-2 ring-dillaGold/30 shadow-xs'
+                  : 'bg-white border-amber-300/80 hover:border-dillaGold hover:bg-amber-50/50 text-dillaDarkGreen shadow-2xs'
+              }`}
+              aria-expanded={isSidebarOpen}
+              aria-controls="navigation-drawer"
+              aria-label={isSidebarOpen ? 'Close navigation drawer' : 'Open navigation drawer'}
+              title={isSidebarOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
             >
-              <Icon name="menu" className="w-5 h-5 text-dillaDarkGreen" />
+              <Icon
+                name={isSidebarOpen ? 'x' : 'menu'}
+                className="w-5 h-5 text-dillaDarkGreen transition-transform duration-200"
+              />
             </button>
 
             {/* University Crest & Name */}
@@ -129,6 +138,17 @@ const Header = ({ isSidebarOpen, onToggleSidebar, user, onLogout }) => {
             )}
 
             {user && <NotificationBell />}
+
+            {user && (
+              <a
+                href="/profile"
+                className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-dillaDarkGreen hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="View & Edit your profile"
+              >
+                <Icon name="user" className="w-3.5 h-3.5 text-dillaGreen" />
+                <span className="hidden sm:inline">Profile</span>
+              </a>
+            )}
 
             {user && (
               <button

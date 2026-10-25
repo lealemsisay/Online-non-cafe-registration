@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Input, Button, Select } from '@/components/forms'
 import { StatusBadge } from '@/components/status/StatusBadge'
 import Icon from '@/components/icons/Icon'
+import ActionMenu from '@/components/common/ActionMenu'
+import StudentDetailModal from '@/components/students/StudentDetailModal'
 
 const CampusDeanDashboard = () => {
   const [activeTab, setActiveTab] = useState('applications') // 'applications', 'history', 'customFields'
@@ -49,6 +51,11 @@ const CampusDeanDashboard = () => {
   const [resetTargetStudent, setResetTargetStudent] = useState(null)
   const [customPassword, setCustomPassword] = useState('')
   const [resettingPassword, setResettingPassword] = useState(false)
+
+  // Student detail modal state
+  const [detailStudentId, setDetailStudentId] = useState(null)
+  const [detailInitialData, setDetailInitialData] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
 
   const loadData = () => {
     setLoading(true)
@@ -689,36 +696,31 @@ const CampusDeanDashboard = () => {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0">
-                        <Button
-                          onClick={() => handleReview(app.id)}
-                          variant="primary"
-                          className="text-xs px-3.5 py-1.5 h-8 font-semibold shadow-xs"
-                        >
-                          Review Slip
-                        </Button>
-
-                        {app.status !== 'return-for-correction' && app.status !== 'returned-for-correction' && (
-                          <Button
-                            onClick={() => handleReturnForCorrection(app.id)}
-                            variant="outline"
-                            className="text-rose-700 border-rose-300 hover:bg-rose-50 text-xs px-3 py-1.5 h-8 font-semibold"
-                          >
-                            Return for Fix
-                          </Button>
-                        )}
-
-                        <Button
-                          onClick={() => {
-                            setResetTargetStudent(app)
-                            setCustomPassword('')
-                          }}
-                          variant="outline"
-                          className="border-slate-300 text-slate-700 hover:bg-slate-100 text-xs px-3 py-1.5 h-8 font-semibold"
-                          title="Authorized reset password for student in your campus"
-                        >
-                          Reset PW
-                        </Button>
+                      <div className="flex items-center gap-2 pt-2 lg:pt-0 flex-shrink-0">
+                        <ActionMenu items={[
+                          {
+                            label: 'View Full Dossier',
+                            icon: 'eye',
+                            onClick: () => { setDetailStudentId(app.studentId || app.id); setDetailInitialData(app); setShowDetailModal(true) },
+                          },
+                          {
+                            label: 'Review Registration Slip',
+                            icon: 'file-text',
+                            onClick: () => handleReview(app.id),
+                          },
+                          {
+                            label: 'Return for Correction',
+                            icon: 'refresh',
+                            disabled: app.status === 'return-for-correction' || app.status === 'returned-for-correction',
+                            className: 'text-rose-700',
+                            onClick: () => handleReturnForCorrection(app.id),
+                          },
+                          {
+                            label: 'Reset Password',
+                            icon: 'key',
+                            onClick: () => { setResetTargetStudent(app); setCustomPassword('') },
+                          },
+                        ]} />
                       </div>
                     </div>
                   )
@@ -1034,6 +1036,14 @@ const CampusDeanDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Student Detail Dossier Modal */}
+      <StudentDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        studentId={detailStudentId}
+        initialData={detailInitialData}
+      />
     </div>
   )
 }

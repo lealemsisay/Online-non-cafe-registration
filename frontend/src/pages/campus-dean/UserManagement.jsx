@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Button, Input } from '@/components/forms'
 import { StatusBadge } from '@/components/status/StatusBadge'
 import Icon from '@/components/icons/Icon'
+import ActionMenu from '@/components/common/ActionMenu'
+import StudentDetailModal from '@/components/students/StudentDetailModal'
 
 const DeanUserManagement = () => {
   const [students, setStudents] = useState([])
@@ -15,6 +17,11 @@ const DeanUserManagement = () => {
   const [customPassword, setCustomPassword] = useState('Student@Dilla2026!')
   const [isResetting, setIsResetting] = useState(false)
   const [resetSuccessMessage, setResetSuccessMessage] = useState(null)
+
+  // Student detail modal
+  const [detailStudentId, setDetailStudentId] = useState(null)
+  const [detailInitialData, setDetailInitialData] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
 
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
@@ -288,14 +295,20 @@ const DeanUserManagement = () => {
                       <StatusBadge status={s.applicationStatus || s.status || 'submitted'} />
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => handleOpenResetModal(s)}
-                        className="px-2.5 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
-                        title="Reset student account password"
-                      >
-                        <Icon name="key" className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Reset PW</span>
-                      </button>
+                      <div className="flex justify-end">
+                        <ActionMenu items={[
+                          {
+                            label: 'View Full Dossier',
+                            icon: 'eye',
+                            onClick: () => { setDetailStudentId(s.studentId || s.id); setDetailInitialData(s); setShowDetailModal(true) },
+                          },
+                          {
+                            label: 'Reset Password',
+                            icon: 'key',
+                            onClick: () => handleOpenResetModal(s),
+                          },
+                        ]} />
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -412,6 +425,14 @@ const DeanUserManagement = () => {
           </div>
         </div>
       )}
+
+      {/* Student Detail Dossier Modal */}
+      <StudentDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        studentId={detailStudentId}
+        initialData={detailInitialData}
+      />
     </div>
   )
 }

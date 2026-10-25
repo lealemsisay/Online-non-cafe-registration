@@ -209,7 +209,7 @@ async function seed() {
            role = EXCLUDED.role,
            campus = EXCLUDED.campus,
            email = EXCLUDED.email,
-           status = COALESCE(app_user.status, 'active'),
+           status = 'active',
            updated_at = NOW()
        RETURNING id`,
       [u.username, hash, altHash, u.fullName, u.role, u.campus, u.email]

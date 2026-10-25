@@ -44,15 +44,36 @@ export default async function handler(req, res) {
       }
 
       // 2. Fetch definitions applicable to this campus
-      const fieldsRes = await client.query(
-        `SELECT id, field_key AS "fieldKey", label, field_type AS "fieldType", options, is_required AS "isRequired", campus
-         FROM custom_field_definition
-         WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))
-         ORDER BY campus NULLS FIRST, created_at ASC`,
-        [student.campus || 'Main Campus']
-      )
+      let defsQuery = `
+        SELECT 
+          id, 
+          field_key AS "fieldKey", 
+          label, 
+          field_type AS "fieldType", 
+          options, 
+          is_required AS "isRequired", 
+          placeholder,
+          help_text AS "helpText",
+          COALESCE(is_student_editable, true) AS "isStudentEditable",
+          COALESCE(visible_student, true) AS "visibleStudent",
+          COALESCE(visible_admin, true) AS "visibleAdmin",
+          COALESCE(visible_dean, true) AS "visibleDean",
+          COALESCE(display_order, 0) AS "displayOrder",
+          COALESCE(validation_rules, '{}'::jsonb) AS "validationRules",
+          campus
+        FROM custom_field_definition
+        WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))
+      `
+      if (userRole === 'student') {
+        defsQuery += ` AND COALESCE(visible_student, true) = true`
+      } else if (userRole === 'dean') {
+        defsQuery += ` AND COALESCE(visible_dean, true) = true`
+      }
+      defsQuery += ` ORDER BY COALESCE(display_order, 0) ASC, created_at ASC`
 
-      // 3. Fetch existing values
+      const fieldsRes = await client.query(defsQuery, [student.campus || 'Main Campus'])
+
+      // 3. Fetch existing values (including historical ones for deactivated fields)
       const valuesRes = await client.query(
         `SELECT field_id AS "fieldId", field_key AS "fieldKey", value
          FROM student_custom_value
@@ -85,15 +106,19 @@ export default async function handler(req, res) {
 
   // POST / PUT: Save custom field values for a student
   if (req.method === 'POST' || req.method === 'PUT') {
-    const { studentId: bodyStudentId, values } = req.body || {}
+    let { studentId: bodyStudentId, values, fieldKey, value } = req.body || {}
     const rawStudentId = bodyStudentId || (userRole === 'student' ? user.studentId || user.username : null)
 
     if (!rawStudentId) {
       return res.status(400).json({ message: 'studentId is required' })
     }
 
+    if (!values && fieldKey !== undefined) {
+      values = { [fieldKey]: value }
+    }
+
     if (!values || typeof values !== 'object') {
-      return res.status(400).json({ message: 'values object is required' })
+      return res.status(400).json({ message: 'values object or fieldKey is required' })
     }
 
     const client = await pool.connect()
@@ -123,7 +148,15 @@ export default async function handler(req, res) {
 
       // 2. Fetch applicable definitions
       const defsRes = await client.query(
-        `SELECT id, field_key AS "fieldKey", label, field_type AS "fieldType", options, is_required AS "isRequired"
+        `SELECT 
+           id, 
+           field_key AS "fieldKey", 
+           label, 
+           field_type AS "fieldType", 
+           options, 
+           is_required AS "isRequired",
+           COALESCE(is_student_editable, true) AS "isStudentEditable",
+           validation_rules AS "validationRules"
          FROM custom_field_definition
          WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))`,
         [student.campus || 'Main Campus']
@@ -131,18 +164,50 @@ export default async function handler(req, res) {
 
       const definitions = defsRes.rows
 
-      // 3. Validate inputs
+      // 3. Fetch existing saved values to check read-only / immutability enforcement
+      const existingValuesRes = await client.query(
+        `SELECT field_key AS "fieldKey", value FROM student_custom_value WHERE student_id = $1`,
+        [student.studentId]
+      )
+      const existingValuesMap = {}
+      existingValuesRes.rows.forEach((r) => {
+        existingValuesMap[r.fieldKey] = r.value
+      })
+
+      // 4. Validate inputs
       const validatedEntries = []
+      const isPartialUpdate = Object.keys(values).length < definitions.length
+
       for (const def of definitions) {
+        const hasKey = Object.prototype.hasOwnProperty.call(values, def.fieldKey)
         const val = values[def.fieldKey]
         const valStr = val !== undefined && val !== null ? String(val).trim() : ''
+        const existingVal = existingValuesMap[def.fieldKey] !== undefined ? String(existingValuesMap[def.fieldKey]).trim() : ''
 
-        // Required check
-        if (def.isRequired && valStr === '') {
-          return res.status(400).json({
-            message: `Custom field '${def.label}' is required.`,
-            fieldKey: def.fieldKey,
-          })
+        // REQUIREMENT 8: Read-only fields cannot be changed by the student
+        if (userRole === 'student' && def.isStudentEditable === false && existingVal !== '') {
+          if (hasKey && valStr !== existingVal) {
+            return res.status(403).json({
+              message: `Field '${def.label}' is read-only and cannot be modified by students after initial submission.`,
+              fieldKey: def.fieldKey,
+            })
+          }
+        }
+
+        // Required check: fail if explicitly empty, or if missing without prior value on POST
+        if (def.isRequired) {
+          if (hasKey && valStr === '') {
+            return res.status(400).json({
+              message: `Registration field '${def.label}' is required.`,
+              fieldKey: def.fieldKey,
+            })
+          }
+          if (!hasKey && existingVal === '' && req.method === 'POST') {
+            return res.status(400).json({
+              message: `Registration field '${def.label}' is required.`,
+              fieldKey: def.fieldKey,
+            })
+          }
         }
 
         // Type checks if value provided
@@ -155,6 +220,22 @@ export default async function handler(req, res) {
                 fieldKey: def.fieldKey,
               })
             }
+          } else if (def.fieldType === 'email') {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+            if (!emailRegex.test(valStr)) {
+              return res.status(400).json({
+                message: `Field '${def.label}' must be a valid email address.`,
+                fieldKey: def.fieldKey,
+              })
+            }
+          } else if (def.fieldType === 'phone' || def.fieldType === 'tel') {
+            const phoneDigits = valStr.replace(/\D/g, '')
+            if (phoneDigits.length < 7) {
+              return res.status(400).json({
+                message: `Field '${def.label}' must contain a valid phone number with at least 7 digits.`,
+                fieldKey: def.fieldKey,
+              })
+            }
           } else if (def.fieldType === 'date') {
             const d = new Date(valStr)
             if (isNaN(d.getTime())) {
@@ -163,18 +244,13 @@ export default async function handler(req, res) {
                 fieldKey: def.fieldKey,
               })
             }
-          } else if (def.fieldType === 'select') {
+          } else if (['select', 'radio'].includes(def.fieldType)) {
             const allowed = Array.isArray(def.options) ? def.options : []
             if (allowed.length > 0 && !allowed.includes(valStr)) {
               return res.status(400).json({
                 message: `Field '${def.label}' has an invalid option '${valStr}'. Allowed: ${allowed.join(', ')}`,
                 fieldKey: def.fieldKey,
               })
-            }
-          } else if (def.fieldType === 'checkbox') {
-            // Normalize checkbox boolean
-            if (valStr !== 'true' && valStr !== 'false' && valStr !== '1' && valStr !== '0') {
-              // Accept true/false
             }
           }
         }
@@ -188,7 +264,8 @@ export default async function handler(req, res) {
         }
       }
 
-      // 4. Upsert values into student_custom_value
+      // 5. Upsert values into student_custom_value inside a transaction
+      await client.query('BEGIN')
       for (const entry of validatedEntries) {
         await client.query(
           `INSERT INTO student_custom_value (student_id, field_id, field_key, value, updated_at)
@@ -198,13 +275,15 @@ export default async function handler(req, res) {
           [student.studentId, entry.fieldId, entry.fieldKey, entry.value]
         )
       }
+      await client.query('COMMIT')
 
       return res.status(200).json({
         success: true,
-        message: 'Custom field values saved successfully',
+        message: 'Registration custom field values saved successfully',
         savedCount: validatedEntries.length,
       })
     } catch (error) {
+      await client.query('ROLLBACK')
       console.error('Error saving custom field values:', error)
       return res.status(500).json({ message: 'Error saving custom field values' })
     } finally {

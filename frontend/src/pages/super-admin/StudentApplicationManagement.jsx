@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { Input, Button } from '@/components/forms'
 import { StatusBadge } from '@/components/status/StatusBadge'
 import Icon from '@/components/icons/Icon'
+import ActionMenu from '@/components/common/ActionMenu'
+import ConfirmModal from '@/components/common/ConfirmModal'
+import StudentDetailModal from '@/components/students/StudentDetailModal'
 
 const StudentApplicationManagement = () => {
   const [applications, setApplications] = useState([])
@@ -11,8 +14,14 @@ const StudentApplicationManagement = () => {
   const [actionMessage, setActionMessage] = useState(null)
   const [error, setError] = useState(null)
 
-  // View modal state
-  const [viewingApp, setViewingApp] = useState(null)
+  // Detail modal state
+  const [detailStudentId, setDetailStudentId] = useState(null)
+  const [detailInitialData, setDetailInitialData] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+
+  // Delete confirmation modal state
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Reset password modal state
   const [resetTargetStudent, setResetTargetStudent] = useState(null)
@@ -42,6 +51,7 @@ const StudentApplicationManagement = () => {
           deanComments: u.deanComments || 'Verified by Campus Dean',
           superAdminComments: u.superAdminComments || '',
           submittedAt: u.createdAt || u.submittedAt || new Date().toISOString(),
+          photoUrl: u.photoUrl || null,
           pdfUrl: `/api/documents/upload?id=${u.studentId || u.id}`,
         }))
 
@@ -54,7 +64,6 @@ const StudentApplicationManagement = () => {
 
   useEffect(() => {
     loadApplications()
-    // Handle action from URL query params
     const params = new URLSearchParams(window.location.search)
     const action = params.get('action')
     const id = params.get('id')
@@ -71,7 +80,7 @@ const StudentApplicationManagement = () => {
     setActionMessage(null)
     setError(null)
     const token = localStorage.getItem('token')
-    const comments = window.prompt(`Enter approval comments or reason for ${decision}:`, defaultComment)
+    const comments = window.prompt(`Enter comments or reason for "${decision}":`, defaultComment)
     if (comments === null) return
 
     try {
@@ -98,9 +107,7 @@ const StudentApplicationManagement = () => {
               : a
           )
         )
-        if (viewingApp && (viewingApp.id === id || viewingApp.studentId === id)) {
-          setViewingApp(null)
-        }
+        setShowDetailModal(false)
       } else {
         setError(data.message || `Failed to process ${decision}`)
       }
@@ -132,7 +139,7 @@ const StudentApplicationManagement = () => {
       const data = await res.json()
       if (res.ok) {
         setActionMessage(
-          `Password for student '${resetTargetStudent.studentName}' (${resetTargetStudent.studentId}) reset successfully! New Password: ${data.resetPassword}`
+          `Password for '${resetTargetStudent.studentName}' (${resetTargetStudent.studentId}) reset successfully! New Password: ${data.resetPassword}`
         )
         setResetTargetStudent(null)
       } else {
@@ -143,10 +150,40 @@ const StudentApplicationManagement = () => {
     }
   }
 
+  const handleDeleteApplication = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    setError(null)
+    const token = localStorage.getItem('token')
+    const id = deleteTarget.studentId || deleteTarget.id
+
+    try {
+      const res = await fetch(`/api/users?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+
+      if (res.ok) {
+        setActionMessage(`Student record '${deleteTarget.studentName}' (${id}) deleted successfully.`)
+        setApplications((prev) => prev.filter((a) => a.studentId !== id && a.id !== id))
+        setDeleteTarget(null)
+      } else {
+        const d = await res.json()
+        setError(d.message || 'Failed to delete student record.')
+        setDeleteTarget(null)
+      }
+    } catch (e) {
+      setError('Network error while deleting student record.')
+      setDeleteTarget(null)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const filteredApplications = applications.filter((app) => {
     const matchesSearch =
-      app.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (app.studentName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (app.studentId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (app.department && app.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (app.campus && app.campus.toLowerCase().includes(searchTerm.toLowerCase()))
 
@@ -154,6 +191,53 @@ const StudentApplicationManagement = () => {
     const matchesStatus = selectedStatus === 'all' || app.status === selectedStatus
     return matchesSearch && matchesCampus && matchesStatus
   })
+
+  const getActionMenuItems = (app) => [
+    {
+      label: 'View Full Dossier',
+      icon: 'eye',
+      onClick: () => {
+        setDetailStudentId(app.studentId || app.id)
+        setDetailInitialData(app)
+        setShowDetailModal(true)
+      },
+    },
+    {
+      label: 'Approve Application',
+      icon: 'check-circle',
+      disabled: app.status === 'approved',
+      onClick: () => handleFinalDecision(app.studentId || app.id, 'approved', 'Approved by Super Admin'),
+    },
+    {
+      label: 'Reject Application',
+      icon: 'x-circle',
+      disabled: app.status === 'rejected',
+      className: 'text-rose-700',
+      onClick: () => handleFinalDecision(app.studentId || app.id, 'rejected', 'Does not meet cost-sharing requirements'),
+    },
+    {
+      label: 'Return for Correction',
+      icon: 'refresh',
+      disabled: app.status === 'return-for-correction',
+      className: 'text-amber-700',
+      onClick: () => handleFinalDecision(app.studentId || app.id, 'return-for-correction', 'Missing required registration slip details'),
+    },
+    {
+      label: 'Reset Password',
+      icon: 'key',
+      onClick: () => {
+        setResetTargetStudent(app)
+        setResetPasswordInput('Student@Dilla2026!')
+      },
+    },
+    {
+      label: 'Delete Record',
+      icon: 'trash',
+      className: 'text-rose-700 font-bold',
+      separator: true,
+      onClick: () => setDeleteTarget(app),
+    },
+  ]
 
   return (
     <div className="bg-white shadow-xl rounded-2xl p-6 sm:p-8 border border-slate-200 max-w-7xl mx-auto space-y-6">
@@ -270,7 +354,22 @@ const StudentApplicationManagement = () => {
                     {app.studentId}
                   </td>
                   <td className="px-4 py-3.5 font-bold text-slate-900">
-                    {app.studentName}
+                    <div className="flex items-center gap-2">
+                      {app.photoUrl ? (
+                        <img
+                          src={app.photoUrl.startsWith('http') ? app.photoUrl : `/api/student/photo?file=${encodeURIComponent(app.photoUrl.replace(/^\/uploads\/photos\//, ''))}`}
+                          alt={app.studentName}
+                          className="w-7 h-9 object-cover rounded border border-slate-200 flex-shrink-0"
+                          style={{ aspectRatio: '3/4' }}
+                          onError={(e) => { e.target.style.display = 'none' }}
+                        />
+                      ) : (
+                        <div className="w-7 h-9 bg-slate-100 rounded border border-slate-200 flex items-center justify-center flex-shrink-0">
+                          <Icon name="user" className="w-4 h-4 text-slate-400" />
+                        </div>
+                      )}
+                      {app.studentName}
+                    </div>
                   </td>
                   <td className="px-4 py-3.5 text-slate-800 font-medium">
                     {app.department}
@@ -281,47 +380,10 @@ const StudentApplicationManagement = () => {
                   <td className="px-4 py-3.5">
                     <StatusBadge status={app.status} />
                   </td>
-                  <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
-                    <button
-                      onClick={() => setViewingApp(app)}
-                      className="px-2.5 py-1 text-xs font-semibold text-dillaDarkGreen bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                    >
-                      View Slip
-                    </button>
-                    {app.status !== 'approved' && (
-                      <button
-                        onClick={() => handleFinalDecision(app.studentId || app.id, 'approved', 'Approved by Super Admin')}
-                        className="px-2.5 py-1 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer border border-emerald-200"
-                      >
-                        Approve
-                      </button>
-                    )}
-                    {app.status !== 'rejected' && (
-                      <button
-                        onClick={() => handleFinalDecision(app.studentId || app.id, 'rejected', 'Does not meet cost-sharing requirements')}
-                        className="px-2.5 py-1 text-xs font-bold text-rose-900 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer border border-rose-200"
-                      >
-                        Reject
-                      </button>
-                    )}
-                    {app.status !== 'return-for-correction' && (
-                      <button
-                        onClick={() => handleFinalDecision(app.studentId || app.id, 'return-for-correction', 'Missing required registration slip details')}
-                        className="px-2.5 py-1 text-xs font-bold text-amber-950 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer border border-amber-200"
-                      >
-                        Return
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setResetTargetStudent(app)
-                        setResetPasswordInput('Student@Dilla2026!')
-                      }}
-                      className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                      title="Authorized reset of student password"
-                    >
-                      Reset PW
-                    </button>
+                  <td className="px-4 py-3.5 text-right">
+                    <div className="flex justify-end">
+                      <ActionMenu items={getActionMenuItems(app)} />
+                    </div>
                   </td>
                 </tr>
               ))
@@ -330,107 +392,29 @@ const StudentApplicationManagement = () => {
         </table>
       </div>
 
-      {/* View Application Detail Modal */}
-      {viewingApp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setViewingApp(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 font-bold text-lg"
-            >
-              ✕
-            </button>
+      {/* Student Detail Dossier Modal */}
+      <StudentDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        studentId={detailStudentId}
+        initialData={detailInitialData}
+      />
 
-            <div className="flex items-center gap-3 mb-6 border-b border-slate-200 pb-4">
-              <div className="w-12 h-12 rounded-xl bg-dillaGreen/10 text-dillaGreen flex items-center justify-center p-2">
-                <Icon name="users" className="w-6 h-6 text-dillaGreen" />
-              </div>
-              <div>
-                <h3 className="font-serif text-xl font-bold text-dillaDarkGreen">{viewingApp.studentName}</h3>
-                <p className="text-xs text-slate-500 font-mono">Admission No: {viewingApp.studentId}</p>
-              </div>
-              <div className="ml-auto">
-                <StatusBadge status={viewingApp.status} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6 bg-[#f8faf9] p-4 rounded-xl border border-slate-200 text-xs">
-              <div>
-                <span className="text-slate-500 font-bold uppercase tracking-wider block">Campus</span>
-                <span className="font-bold text-dillaGreen text-sm">{viewingApp.campus}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-bold uppercase tracking-wider block">Department</span>
-                <span className="font-bold text-slate-900 text-sm">{viewingApp.department}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-bold uppercase tracking-wider block">Academic Year</span>
-                <span className="font-bold text-slate-900 text-sm">{viewingApp.academicYear}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-bold uppercase tracking-wider block">Program Type</span>
-                <span className="font-semibold text-slate-900">{viewingApp.program}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-bold uppercase tracking-wider block">Year of Study</span>
-                <span className="font-semibold text-slate-900">Year {viewingApp.yearOfStudy}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-bold uppercase tracking-wider block">Gender</span>
-                <span className="font-semibold text-slate-900">{viewingApp.gender}</span>
-              </div>
-            </div>
-
-            {/* Dean Review Findings */}
-            <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50/50">
-              <h4 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-2">
-                Campus Dean Review Finding
-              </h4>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-xs text-slate-700 font-medium">Verification Status:</span>
-                <StatusBadge status={viewingApp.finding} />
-              </div>
-              <p className="text-xs text-slate-800 mt-1 leading-relaxed">
-                <strong>Dean's Verification Remarks:</strong> {viewingApp.deanComments || 'Verified as registered student.'}
-              </p>
-            </div>
-
-            {viewingApp.superAdminComments && (
-              <div className="mb-6 p-4 rounded-xl border border-purple-200 bg-purple-50/50">
-                <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider mb-1">
-                  Super Admin Authorization Remarks
-                </h4>
-                <p className="text-xs text-purple-900">{viewingApp.superAdminComments}</p>
-              </div>
-            )}
-
-            {/* Actions in Modal */}
-            <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-200">
-              <Button
-                onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'approved', 'Approved by Super Admin')}
-                variant="primary"
-                className="flex-1 font-bold"
-              >
-                ✓ Approve Subsidy
-              </Button>
-              <Button
-                onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'rejected', 'Rejected by Super Admin')}
-                variant="danger"
-                className="flex-1 font-bold"
-              >
-                ✕ Reject
-              </Button>
-              <Button
-                onClick={() => handleFinalDecision(viewingApp.studentId || viewingApp.id, 'return-for-correction', 'Missing required registration slip details')}
-                variant="gold"
-                className="flex-1 font-bold"
-              >
-                ↩ Return for Fix
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteApplication}
+        isLoading={isDeleting}
+        title="Delete Student Application"
+        description={
+          deleteTarget
+            ? `You are about to permanently delete the application record for ${deleteTarget.studentName} (${deleteTarget.studentId}). All associated data including documents, dean reviews, and approval history will be permanently removed.`
+            : ''
+        }
+        confirmLabel="Delete Record"
+        danger
+      />
 
       {/* Password Reset Modal */}
       {resetTargetStudent && (

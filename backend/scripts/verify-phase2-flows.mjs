@@ -238,19 +238,25 @@ async function run() {
   })
   assert(deanEditCentralRes.status === 403, 'Campus Dean editing central custom field is FORBIDDEN (HTTP 403)')
 
-  // 1.13 Safe deletion of custom field definition (cascade cleans student values)
-  const deleteFieldRes = await fetch(`${BASE_URL}/api/custom-fields?id=${campusFieldId}`, {
+  // 1.13 Safe deletion of custom field definition (cascade cleans student values with force flag if data exists)
+  let deleteFieldRes = await fetch(`${BASE_URL}/api/custom-fields?id=${campusFieldId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${deanToken}` },
   })
+  if (deleteFieldRes.status === 409) {
+    deleteFieldRes = await fetch(`${BASE_URL}/api/custom-fields?id=${campusFieldId}&force=true`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${deanToken}` },
+    })
+  }
   assert(deleteFieldRes.status === 200, 'Campus Dean can safely delete own campus custom field (HTTP 200)')
 
   // Clean up select and central field
-  await fetch(`${BASE_URL}/api/custom-fields?id=${selectFieldId}`, {
+  await fetch(`${BASE_URL}/api/custom-fields?id=${selectFieldId}&force=true`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${adminToken}` },
   })
-  await fetch(`${BASE_URL}/api/custom-fields?id=${centralFieldId}`, {
+  await fetch(`${BASE_URL}/api/custom-fields?id=${centralFieldId}&force=true`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${adminToken}` },
   })
