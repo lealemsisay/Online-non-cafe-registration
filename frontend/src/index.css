@@ -62,6 +62,15 @@ body {
   animation: fadeIn 0.25s ease-out forwards;
 }
 
+@keyframes dropdownSlideDown {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-dropdownSlideDown {
+  animation: dropdownSlideDown 0.18s ease-out;
+}
+
 /* High-contrast readable input states */
 input:focus,
 select:focus,

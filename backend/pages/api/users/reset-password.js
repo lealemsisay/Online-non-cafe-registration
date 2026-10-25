@@ -122,6 +122,6 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('Password reset error:', error)
-    return res.status(500).json({ message: 'Server error during password reset' })
+    return res.status(500).json({ message: 'Server error during password reset', detail: error.message })
   }
 }

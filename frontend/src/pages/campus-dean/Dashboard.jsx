@@ -57,7 +57,7 @@ const CampusDeanDashboard = () => {
   const [detailInitialData, setDetailInitialData] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true)
     const token = localStorage.getItem('token')
     const campus = localStorage.getItem('userCampus') || 'Main Campus'
@@ -65,52 +65,66 @@ const CampusDeanDashboard = () => {
     setUserCampus(campus)
     setUserName(name)
 
-    fetch('/api/users', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        const rawApps = (data?.users || data?.applications || []).filter(
-          (u) => !u.role || u.role === 'student'
-        )
-
-        const apps = rawApps.map((u) => ({
-          id: u.studentId || u.id,
-          studentId: u.studentId || u.username || u.id,
-          studentName: u.fullName || u.name || 'Student',
-          department: u.department || 'General',
-          campus: u.campus || campus,
-          status: u.applicationStatus || u.status || 'dean-review',
-          academicYear: u.academicYear || '2023/2024',
-          submittedAt: u.createdAt || u.submittedAt || new Date().toISOString(),
-          phone: u.phone || '',
-          email: u.email || '',
-        }))
-
-        setApplications(apps)
-        const pending = apps.filter((a) => a.status === 'dean-review' || a.status === 'submitted').length
-        const approved = apps.filter((a) => a.status === 'approved').length
-        const returned = apps.filter(
-          (a) => a.status === 'return-for-correction' || a.status === 'returned-for-correction'
-        ).length
-
-        setStats({
-          totalStudents: apps.length,
-          newApplications: apps.filter((a) => a.status === 'submitted').length,
-          pendingReview: pending,
-          reviewed: apps.filter((a) => a.status !== 'submitted' && a.status !== 'dean-review').length,
-          returnedForCorrection: returned,
-          approved,
-          rejected: apps.filter((a) => a.status === 'rejected').length,
-        })
+    try {
+      const response = await fetch('/api/users', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
-      .catch((err) => {
-        console.error('Failed to load applications:', err)
-        setError('Failed to load applications. Please verify your connection.')
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        // Handle authorization/ authentication errors
+        if (response.status === 401) {
+          setError('Session expired. Please log in again.')
+          localStorage.removeItem('token')
+        } else if (response.status === 403) {
+          setError(errorData.message || 'Access denied: Insufficient permissions')
+        } else {
+          setError(errorData.message || 'Failed to load applications. Please try again.')
+        }
+        return
+      }
+
+      const data = await response.json()
+      const rawApps = (data?.users || data?.applications || []).filter(
+        (u) => !u.role || u.role === 'student'
+      )
+
+      const apps = rawApps.map((u) => ({
+        id: u.studentId || u.id,
+        studentId: u.studentId || u.username || u.id,
+        studentName: u.fullName || u.name || 'Student',
+        department: u.department || 'General',
+        campus: u.campus || campus,
+        status: u.applicationStatus || u.status || 'dean-review',
+        academicYear: u.academicYear || '2023/2024',
+        submittedAt: u.createdAt || u.submittedAt || new Date().toISOString(),
+        phone: u.phone || '',
+        email: u.email || '',
+      }))
+
+      setApplications(apps)
+      const pending = apps.filter((a) => a.status === 'dean-review' || a.status === 'submitted').length
+      const approved = apps.filter((a) => a.status === 'approved').length
+      const returned = apps.filter(
+        (a) => a.status === 'return-for-correction' || a.status === 'returned-for-correction'
+      ).length
+
+      setStats({
+        totalStudents: apps.length,
+        newApplications: apps.filter((a) => a.status === 'submitted').length,
+        pendingReview: pending,
+        reviewed: apps.filter((a) => a.status !== 'submitted' && a.status !== 'dean-review').length,
+        returnedForCorrection: returned,
+        approved,
+        rejected: apps.filter((a) => a.status === 'rejected').length,
       })
-      .finally(() => {
-        setLoading(false)
-      })
+    } catch (err) {
+      console.error('Failed to load applications:', err)
+      setError('Network error. Please check your connection and try again.')
+    }
+    finally {
+      setLoading(false)
+    }
   }
 
   const loadSubmissions = () => {

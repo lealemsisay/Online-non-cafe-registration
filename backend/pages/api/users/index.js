@@ -108,7 +108,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ users, applications: users })
     } catch (error) {
       console.error('Error fetching users:', error)
-      return res.status(500).json({ message: 'Error fetching users' })
+      return res.status(500).json({ message: 'Error fetching users', detail: error.message })
     } finally {
       client.release()
     }
@@ -201,7 +201,7 @@ export default async function handler(req, res) {
       return res.status(201).json({ user: result.rows[0] })
     } catch (error) {
       console.error('Error creating user:', error)
-      return res.status(500).json({ message: 'Error creating user' })
+      return res.status(500).json({ message: 'Error creating user', detail: error.message })
     } finally {
       client.release()
     }
@@ -361,7 +361,7 @@ export default async function handler(req, res) {
       })
     } catch (error) {
       console.error('Error updating user:', error)
-      return res.status(500).json({ message: 'Error updating user' })
+      return res.status(500).json({ message: 'Error updating user', detail: error.message })
     } finally {
       client.release()
     }
@@ -436,7 +436,7 @@ export default async function handler(req, res) {
       })
     } catch (error) {
       console.error('Error deleting record:', error)
-      return res.status(500).json({ message: 'Error deleting record' })
+      return res.status(500).json({ message: 'Error deleting record', detail: error.message })
     } finally {
       client.release()
     }

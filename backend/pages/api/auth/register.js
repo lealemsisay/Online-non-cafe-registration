@@ -147,6 +147,6 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('Self-registration error:', error)
-    return res.status(500).json({ message: 'Server error during student registration' })
+    return res.status(500).json({ message: 'Server error during student registration', detail: error.message })
   }
 }

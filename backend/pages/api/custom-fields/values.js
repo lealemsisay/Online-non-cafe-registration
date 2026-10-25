@@ -98,7 +98,7 @@ export default async function handler(req, res) {
       })
     } catch (error) {
       console.error('Error fetching custom field values:', error)
-      return res.status(500).json({ message: 'Error fetching custom field values' })
+      return res.status(500).json({ message: 'Error fetching custom field values', detail: error.message })
     } finally {
       client.release()
     }
@@ -285,7 +285,7 @@ export default async function handler(req, res) {
     } catch (error) {
       await client.query('ROLLBACK')
       console.error('Error saving custom field values:', error)
-      return res.status(500).json({ message: 'Error saving custom field values' })
+      return res.status(500).json({ message: 'Error saving custom field values', detail: error.message })
     } finally {
       client.release()
     }

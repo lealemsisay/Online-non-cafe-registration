@@ -203,7 +203,7 @@ export default async function handler(req, res) {
       })
     } catch (error) {
       console.error('Photo upload error:', error)
-      return res.status(500).json({ message: 'Internal server error processing photo upload.' })
+      return res.status(500).json({ message: 'Internal server error processing photo upload.', detail: error.message })
     } finally {
       client.release()
     }

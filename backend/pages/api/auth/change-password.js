@@ -73,6 +73,6 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('Password change error:', error)
-    return res.status(500).json({ message: 'Server error while changing password' })
+    return res.status(500).json({ message: 'Server error while changing password', detail: error.message })
   }
 }

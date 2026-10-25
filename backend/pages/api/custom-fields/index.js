@@ -104,7 +104,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ customFields: result.rows })
     } catch (error) {
       console.error('Error fetching custom fields:', error)
-      return res.status(500).json({ message: 'Error fetching custom fields' })
+      return res.status(500).json({ message: 'Error fetching custom fields', detail: error.message })
     } finally {
       client.release()
     }
@@ -262,7 +262,7 @@ export default async function handler(req, res) {
       return res.status(201).json({ success: true, customField: newField })
     } catch (error) {
       console.error('Error creating custom field:', error)
-      return res.status(500).json({ message: 'Error creating custom field' })
+      return res.status(500).json({ message: 'Error creating custom field', detail: error.message })
     } finally {
       client.release()
     }
@@ -388,7 +388,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, customField: updateRes.rows[0] })
     } catch (error) {
       console.error('Error updating custom field:', error)
-      return res.status(500).json({ message: 'Error updating custom field' })
+      return res.status(500).json({ message: 'Error updating custom field', detail: error.message })
     } finally {
       client.release()
     }
@@ -453,7 +453,7 @@ export default async function handler(req, res) {
       })
     } catch (error) {
       console.error('Error deleting custom field:', error)
-      return res.status(500).json({ message: 'Error deleting custom field' })
+      return res.status(500).json({ message: 'Error deleting custom field', detail: error.message })
     } finally {
       client.release()
     }

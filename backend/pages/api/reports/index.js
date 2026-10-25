@@ -211,7 +211,7 @@ export default async function handler(req, res) {
     })
   } catch (error) {
     console.error('Error fetching reports data:', error)
-    return res.status(500).json({ message: 'Error fetching reports data' })
+    return res.status(500).json({ message: 'Error fetching reports data', detail: error.message })
   } finally {
     client.release()
   }

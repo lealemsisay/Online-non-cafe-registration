@@ -15,17 +15,25 @@ export default async function handler(req, res) {
       try {
         // Find user in app_user
         const userRes = await client.query(
-          'SELECT id, username, full_name AS "fullName", role, campus, email, phone, photo_url AS "photoUrl" FROM app_user WHERE id::text = $1 OR LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)',
-          [userId]
+          `SELECT id, username, full_name AS "fullName", role, campus, email, phone, photo_url AS "photoUrl"
+           FROM app_user
+           WHERE id::text = $1::text OR LOWER(username) = LOWER($1::text) OR LOWER(COALESCE(email, '')) = LOWER($1::text)`,
+          [String(userId)]
         )
 
         let appUser = userRes.rows[0] || null
         const studentLookupId = appUser && appUser.username ? appUser.username : userId
-
         // Check student table if user is a student or looking up a student
         const studentRes = await client.query(
-          `SELECT id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus", dean_review AS "deanReview", dean_comments AS "deanComments", super_admin_review AS "superAdminReview", super_admin_comments AS "superAdminComments", approval_status AS "approvalStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM student WHERE id::text = $1 OR LOWER(student_id) = LOWER($1) OR LOWER(student_id) = LOWER($2)`,
-          [userId, studentLookupId]
+          `SELECT id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program,
+                  year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear",
+                  is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus",
+                  application_status AS "applicationStatus", dean_review AS "deanReview", dean_comments AS "deanComments",
+                  super_admin_review AS "superAdminReview", super_admin_comments AS "superAdminComments",
+                  approval_status AS "approvalStatus", created_at AS "createdAt", updated_at AS "updatedAt"
+           FROM student
+           WHERE id::text = $1::text OR LOWER(student_id) = LOWER($1::text) OR LOWER(student_id) = LOWER($2::text)`,
+          [String(userId), String(studentLookupId)]
         )
 
         let studentData = studentRes.rows[0] || null
@@ -36,6 +44,7 @@ export default async function handler(req, res) {
 
         // Fetch custom fields and values if student record exists (including historical fields)
         if (studentData) {
+         try {
           const studentCampus = studentData.campus || (appUser && appUser.campus) || 'Main Campus'
 
           // 1. Fetch all student saved custom values (including historical/archived fields)
@@ -102,6 +111,10 @@ export default async function handler(req, res) {
             customValues: customValuesMap,
             customFields: Array.from(fieldsMap.values()),
           }
+         } catch (cfErr) {
+          console.error('Profile custom fields error (non-fatal):', cfErr.message)
+          studentData = { ...studentData, customValues: {}, customFields: [] }
+         }
         }
 
         const effectivePhoto =
@@ -133,7 +146,7 @@ export default async function handler(req, res) {
       }
     } catch (error) {
       console.error('Profile fetch error:', error)
-      return res.status(500).json({ message: 'Server error fetching profile' })
+      return res.status(500).json({ message: 'Server error fetching profile', detail: error.message })
     }
   }
 
@@ -289,7 +302,7 @@ export default async function handler(req, res) {
       })
     } catch (error) {
       console.error('Profile update error:', error)
-      return res.status(500).json({ message: 'Internal server error updating profile.' })
+      return res.status(500).json({ message: 'Internal server error updating profile.', detail: error.message })
     } finally {
       client.release()
     }

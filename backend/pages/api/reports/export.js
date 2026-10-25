@@ -257,7 +257,7 @@ export default async function handler(req, res) {
     return res.status(200).send(csvBuffer)
   } catch (error) {
     console.error('Error exporting report:', error)
-    return res.status(500).json({ message: 'Error exporting report' })
+    return res.status(500).json({ message: 'Error exporting report', detail: error.message })
   } finally {
     client.release()
   }

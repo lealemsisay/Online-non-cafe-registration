@@ -88,6 +88,6 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('Login error:', error)
-    return res.status(500).json({ message: 'Server error during login' })
+    return res.status(500).json({ message: 'Server error during login', detail: error.message })
   }
 }

@@ -48,6 +48,7 @@ import {
   EyeOff,
   ArrowUp,
   ArrowDown,
+  ChevronDown,
 } from 'lucide-react'
 
 const icons = {
@@ -106,6 +107,7 @@ const icons = {
   'eye-off': EyeOff,
   'arrow-up': ArrowUp,
   'arrow-down': ArrowDown,
+  'chevron-down': ChevronDown,
 }
 
 const Icon = ({ name, className = 'w-5 h-5', ...props }) => {
