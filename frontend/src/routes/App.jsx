@@ -30,33 +30,27 @@ import StudentRegister from '@/pages/auth/StudentRegister'
 // Profile page
 import ProfilePage from '@/pages/profile/ProfilePage'
 
-// Helper to get active user details from storage
-function getAuthUser() {
-  const role = localStorage.getItem('userRole')
-  const name = localStorage.getItem('userName')
-  const campus = localStorage.getItem('userCampus')
-  const id = localStorage.getItem('userId')
-  const token = localStorage.getItem('token')
-  return { role, name, campus, id, token }
-}
+// Auth & token management utilities
+import { getAuthUser, clearAuthStorage } from '@/lib/auth'
 
-// Protected Route Guard with safe redirection (prevents loops)
+// Protected Route Guard with safe redirection (prevents loops & verifies active token)
 const ProtectedRoute = ({ role, children }) => {
   const navigate = useNavigate()
   const user = getAuthUser()
 
   useEffect(() => {
-    if (!user.role) {
-      navigate('/login', { replace: true })
+    if (!user.role || !user.token) {
+      clearAuthStorage()
+      navigate('/login?session=expired', { replace: true })
     } else if (user.role !== role) {
-      if (user.role === 'admin') navigate('/admin', { replace: true })
+      if (user.role === 'admin' || user.role === 'viceDean') navigate('/admin', { replace: true })
       else if (user.role === 'dean') navigate('/dean', { replace: true })
       else if (user.role === 'student') navigate('/', { replace: true })
       else navigate('/login', { replace: true })
     }
-  }, [user.role, role, navigate])
+  }, [user.role, user.token, role, navigate])
 
-  if (!user.role || user.role !== role) {
+  if (!user.role || !user.token || user.role !== role) {
     return null
   }
 
@@ -66,17 +60,19 @@ const ProtectedRoute = ({ role, children }) => {
 // Public/Login Route Guard (redirects already logged in users to their role dashboard)
 const PublicRoute = ({ children }) => {
   const user = getAuthUser()
-  if (user.role === 'admin') return <Navigate to="/admin" replace />
-  if (user.role === 'dean') return <Navigate to="/dean" replace />
-  if (user.role === 'student') return <Navigate to="/" replace />
+  if (user.role && user.token) {
+    if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
+    if (user.role === 'dean') return <Navigate to="/dean" replace />
+    if (user.role === 'student') return <Navigate to="/" replace />
+  }
   return children
 }
 
 // Root Route handler for /
 const RootRoute = () => {
   const user = getAuthUser()
-  if (!user.role) return <Navigate to="/login" replace />
-  if (user.role === 'admin') return <Navigate to="/admin" replace />
+  if (!user.role || !user.token) return <Navigate to="/login" replace />
+  if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
   if (user.role === 'dean') return <Navigate to="/dean" replace />
   if (user.role === 'student') return <StudentPortal />
   return <Navigate to="/login" replace />
@@ -91,13 +87,7 @@ const AppLayout = ({ children }) => {
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register'
 
   const handleLogout = () => {
-    localStorage.removeItem('userRole')
-    localStorage.removeItem('userName')
-    localStorage.removeItem('userCampus')
-    localStorage.removeItem('userId')
-    localStorage.removeItem('studentId')
-    localStorage.removeItem('userEmail')
-    localStorage.removeItem('token')
+    clearAuthStorage()
     window.location.href = '/login'
   }
 

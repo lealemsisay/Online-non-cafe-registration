@@ -4,8 +4,8 @@ import { authorize, setCorsHeaders } from '@/lib/auth'
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  // Accessible by all authenticated roles: student, dean, admin
-  const auth = authorize(req, ['student', 'dean', 'admin'])
+  // Accessible by all authenticated roles: student, dean, admin, viceDean
+  const auth = authorize(req, ['student', 'dean', 'admin', 'viceDean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   const user = auth.user
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
       `
       const params = [userId, username, userRole]
 
-      if (userRole === 'dean' && userCampus) {
+      if ((userRole === 'dean' || userRole === 'viceDean') && userCampus) {
         query += ` AND (campus IS NULL OR LOWER(campus) = LOWER($4))`
         params.push(userCampus)
       } else if (userRole === 'student' && userCampus) {

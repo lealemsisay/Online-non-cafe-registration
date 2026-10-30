@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Icon from '@/components/icons/Icon'
+import { isTokenValid } from '@/lib/auth'
 
 const NotificationBell = () => {
   const [notifications, setNotifications] = useState([])
@@ -10,19 +11,22 @@ const NotificationBell = () => {
 
   const fetchNotifications = async () => {
     const token = localStorage.getItem('token')
-    if (!token) return
+    if (!token || !isTokenValid(token)) return
 
     try {
       const res = await fetch('/api/notifications', {
         headers: { Authorization: `Bearer ${token}` },
       })
+      if (res.status === 401) {
+        return
+      }
       if (res.ok) {
         const data = await res.json()
         setNotifications(data.notifications || [])
         setUnreadCount(data.unreadCount || 0)
       }
     } catch (err) {
-      console.error('Failed to fetch notifications:', err)
+      // Ignore polling errors silently
     }
   }
 

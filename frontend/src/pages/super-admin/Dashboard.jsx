@@ -22,7 +22,11 @@ const SuperAdminDashboard = () => {
   const loadData = () => {
     setLoading(true)
     const token = localStorage.getItem('token')
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    if (!token) {
+      setLoading(false)
+      return
+    }
+    const headers = { Authorization: `Bearer ${token}` }
 
     Promise.all([
       fetch('/api/users', { headers }).then((r) => (r.ok ? r.json() : null)),

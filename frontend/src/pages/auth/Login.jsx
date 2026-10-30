@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Input, Button } from '@/components/forms'
 import Icon from '@/components/icons/Icon'
@@ -11,6 +11,13 @@ const LoginPage = () => {
   const [showForgotModal, setShowForgotModal] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('session') === 'expired') {
+      setError('Your session has expired or authentication is required. Please sign in to continue.')
+    }
+  }, [])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -46,7 +53,7 @@ const LoginPage = () => {
         window.location.href = '/'
       } else if (data.user.role === 'dean') {
         window.location.href = '/dean'
-      } else if (data.user.role === 'admin') {
+      } else if (data.user.role === 'admin' || data.user.role === 'viceDean') {
         window.location.href = '/admin'
       }
     } catch (err) {

@@ -9,8 +9,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' })
   }
 
-  // Only Super Admin and Campus Dean can execute authorized resets
-  const auth = authorize(req, ['admin', 'dean'])
+  // Only Super Admin, Vice Dean, and Campus Dean can execute authorized resets
+  const auth = authorize(req, ['admin', 'dean', 'viceDean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   try {
@@ -63,14 +63,23 @@ export default async function handler(req, res) {
         }
       }
 
-      // C) Target is Student: Campus Dean can ONLY reset students in their own campus
+      // Target is Vice Dean: Can only be reset by Super Admin
+      if (target.role === 'viceDean') {
+        if (auth.user.role !== 'admin') {
+          return res.status(403).json({
+            message: 'Forbidden: Vice Dean passwords can only be reset by Super Admin.',
+          })
+        }
+      }
+
+      // C) Target is Student: Campus Dean or Vice Dean can ONLY reset students in their own campus
       if (target.role === 'student') {
-        if (auth.user.role === 'dean') {
-          const deanCampus = (auth.user.campus || '').trim().toLowerCase()
+        if (auth.user.role === 'dean' || auth.user.role === 'viceDean') {
+          const staffCampus = (auth.user.campus || '').trim().toLowerCase()
           const studentCampus = (target.campus || '').trim().toLowerCase()
-          if (!deanCampus || !studentCampus || deanCampus !== studentCampus) {
+          if (!staffCampus || !studentCampus || staffCampus !== studentCampus) {
             return res.status(403).json({
-              message: `Forbidden: Campus Deans are strictly restricted to their own campus. Target student belongs to '${target.campus || 'Unknown'}', while you administer '${auth.user.campus}'.`,
+              message: `Forbidden: Staff are strictly restricted to their own campus. Target student belongs to '${target.campus || 'Unknown'}', while you administer '${auth.user.campus}'.`,
             })
           }
         }

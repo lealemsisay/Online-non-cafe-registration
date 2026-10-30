@@ -19,12 +19,12 @@ model Student {
   phone String
   email String
   academicYear String
-  isNonCafeteria Student @default(false)
+  isNonCafeteria Boolean @default(false)
   registrationStatus String @default("draft")
   applicationStatus String @default("submitted")
-  deanReview Finding String?
+  deanReview String?
   deanComments String?
-  superAdminReview Finding String?
+  superAdminReview String?
   superAdminComments String?
   approvalStatus String @default("pending")
   rejectedAt DateTime?

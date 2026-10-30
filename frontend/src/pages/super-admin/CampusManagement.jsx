@@ -12,6 +12,7 @@ const CampusManagement = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
+  const [formVisible, setFormVisible] = useState(false)
 
   const loadCampuses = () => {
     const token = localStorage.getItem('token')
@@ -31,11 +32,18 @@ const CampusManagement = () => {
     loadCampuses()
   }, [])
 
+  const handleShowForm = () => setFormVisible(true)
+  const handleHideForm = () => setFormVisible(false)
+
   const handleAddCampus = async () => {
     setError(null)
     setMessage(null)
     if (!newCampusName.trim()) {
       setError('Please provide a valid campus name.')
+      return
+    }
+    if (campuses.some((c) => c.name.toLowerCase() === newCampusName.toLowerCase())) {
+      setError('A campus with this name already exists.')
       return
     }
 
@@ -59,6 +67,7 @@ const CampusManagement = () => {
         setNewCampusName('')
         setNewCampusCode('')
         setMessage(`Campus '${data.campus.name}' created successfully!`)
+        setFormVisible(false)
       } else {
         setError(data.message || 'Failed to add campus')
       }
@@ -204,29 +213,42 @@ const CampusManagement = () => {
         </div>
       )}
 
-      {/* Add New Campus Form */}
-      <div className="bg-[#f8faf9] border border-slate-200 rounded-2xl p-5">
-        <h3 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-3">
-          Provision New Campus
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Input
-            placeholder="Campus Name (e.g. Main Campus, Haru Campus)"
-            value={newCampusName}
-            onChange={(e) => setNewCampusName(e.target.value)}
-            className="text-slate-900 h-10"
-          />
-          <Input
-            placeholder="Campus Code (e.g. MC, OC, HC)"
-            value={newCampusCode}
-            onChange={(e) => setNewCampusCode(e.target.value)}
-            className="text-slate-900 h-10 font-mono"
-          />
-          <Button onClick={handleAddCampus} variant="primary" className="w-full font-bold">
-            + Add University Campus
-          </Button>
+      {/* Campus Creation Button + Form */}
+      {formVisible ? (
+        <div className="bg-[#f8faf9] border border-slate-200 rounded-2xl p-5 mb-6">
+          <h3 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-3">
+            Provision New Campus
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input
+              placeholder="Campus Name (e.g. Main Campus, Haru Campus)"
+              value={newCampusName}
+              onChange={(e) => setNewCampusName(e.target.value)}
+              className="text-slate-900 h-10"
+            />
+            <Input
+              placeholder="Campus Code (e.g. MC, OC, HC)"
+              value={newCampusCode}
+              onChange={(e) => setNewCampusCode(e.target.value)}
+              className="text-slate-900 h-10 font-mono"
+            />
+            <Button onClick={handleAddCampus} variant="primary" className="w-full font-bold">
+              Create Campus
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleHideForm}
+              className="w-full mt-2 font-bold"
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <Button onClick={handleShowForm} variant="primary" className="w-full mb-4">
+          + Add University Campus
+        </Button>
+      )}
 
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -309,7 +331,7 @@ const CampusManagement = () => {
                         campus.status === 'active'
                           ? 'text-amber-800 bg-amber-50 hover:bg-amber-100'
                           : 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
-                      }`}
+                        }`}
                     >
                       {campus.status === 'active' ? 'Deactivate' : 'Reactivate'}
                     </button>

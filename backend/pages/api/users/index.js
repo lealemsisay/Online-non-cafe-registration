@@ -4,8 +4,8 @@ import { authorize, setCorsHeaders, hashPassword } from '@/lib/auth'
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  // Accessible by Super Admin and Campus Dean
-  const auth = authorize(req, ['admin', 'dean'])
+  // Accessible by Super Admin, Vice Dean, and Campus Dean
+  const auth = authorize(req, ['admin', 'viceDean', 'dean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   // GET: Retrieve users or students
@@ -46,7 +46,69 @@ export default async function handler(req, res) {
         return res.status(200).json({ deans, users: deans })
       }
 
-      // 2. Querying Students & Applications
+      // 2. Querying Vice Deans (Super Admin only for full list, Vice Dean own)
+      if (type === 'vicedean' || type === 'vicedeans' || type === 'vice-dean') {
+        if (auth.user.role === 'admin') {
+          // Super Admin sees all Vice Deans
+          let q = `SELECT id, username, full_name AS "name", email, campus, role, status, created_at AS "createdAt" FROM app_user WHERE role = 'viceDean'`
+          const p = []
+          if (search) {
+            p.push(`%${search}%`)
+            q += ` AND (LOWER(full_name) LIKE $${p.length} OR LOWER(username) LIKE $${p.length} OR LOWER(email) LIKE $${p.length})`
+          }
+          if (campusFilter && campusFilter !== 'all') {
+            p.push(campusFilter)
+            q += ` AND campus = $${p.length}`
+          }
+          q += ' ORDER BY created_at DESC'
+          const result = await client.query(q, p)
+          const viceDeans = result.rows.map(d => ({
+            id: d.id,
+            name: d.name,
+            username: d.username,
+            email: d.email || `${d.username}@dilla.edu.et`,
+            campus: d.campus || 'Main Campus',
+            status: d.status || 'active',
+            role: d.role,
+            createdAt: d.createdAt,
+          }))
+          return res.status(200).json({ viceDeans, users: viceDeans })
+        } else if (auth.user.role === 'viceDean') {
+          // Vice Dean sees own account only
+          const result = await client.query(
+            `SELECT id, username, full_name AS "name", email, campus, role, status, created_at AS "createdAt" FROM app_user WHERE id = $1`,
+            [auth.user.id]
+          )
+          const viceDean = result.rows[0]
+          if (viceDean) {
+            return res.status(200).json({
+              viceDeans: [{
+                id: viceDean.id,
+                name: viceDean.name,
+                username: viceDean.username,
+                email: viceDean.email || `${viceDean.username}@dilla.edu.et`,
+                campus: viceDean.campus || 'Main Campus',
+                status: viceDean.status || 'active',
+                role: viceDean.role,
+                createdAt: viceDean.createdAt,
+              }],
+              users: [{
+                id: viceDean.id,
+                name: viceDean.name,
+                username: viceDean.username,
+                email: viceDean.email || `${viceDean.username}@dilla.edu.et`,
+                campus: viceDean.campus || 'Main Campus',
+                status: viceDean.status || 'active',
+                role: viceDean.role,
+                createdAt: viceDean.createdAt,
+              }]
+            })
+          }
+          return res.status(200).json({ viceDeans: [], users: [] })
+        }
+      }
+
+      // 3. Querying Students & Applications
       let query = `
         SELECT s.id, s.student_id AS "studentId", s.full_name AS "fullName", s.gender, s.campus, 
                s.department, s.program, s.year_of_study AS "yearOfStudy", s.phone, s.email, s.photo_url AS "photoUrl",
@@ -63,6 +125,10 @@ export default async function handler(req, res) {
 
       // Campus Dean: strictly scoped to Dean's campus
       if (auth.user.role === 'dean') {
+        params.push(auth.user.campus)
+        conditions.push(`s.campus = $${params.length}`)
+      } else if (auth.user.role === 'viceDean') {
+        // Vice Dean scoped to their assigned campus
         params.push(auth.user.campus)
         conditions.push(`s.campus = $${params.length}`)
       } else if (campusFilter && campusFilter !== 'all') {
@@ -114,12 +180,61 @@ export default async function handler(req, res) {
     }
   }
 
-  // POST: Create users (Super Admin or Campus Dean)
+  // POST: Create users (Super Admin, Vice Dean, or Campus Dean)
   if (req.method === 'POST') {
     const client = await pool.connect()
     try {
       const body = req.body || {}
       const { role } = body
+
+      // If creating a Vice Dean user (Super Admin only)
+      if (role === 'viceDean' || role?.toLowerCase() === 'vicedean') {
+        if (auth.user.role !== 'admin') {
+          return res.status(403).json({ message: 'Access denied: Super Admin only' })
+        }
+        const { name, email, campus, password } = body
+        if (!campus || !campus.trim()) {
+          return res.status(400).json({ message: 'Campus assignment is required when creating a Vice Dean' })
+        }
+        const cleanCampus = campus.trim()
+        // Check for duplicate username/email
+        const rawUsername = email ? email.split('@')[0] : `vice.dean.${cleanCampus.toLowerCase().replace(/\s+/g, '')}`
+        const username = rawUsername.trim()
+
+        // Check if a user with this username already exists
+        const existingUser = await client.query(
+          `SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
+          [username]
+        )
+        if (existingUser.rows.length > 0) {
+          return res.status(409).json({ message: 'A user with this username or email already exists.' })
+        }
+
+        const initialPassword = password || 'ViceDean@Dilla2026!'
+        const hash = await hashPassword(initialPassword)
+
+        const result = await client.query(
+          `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status)
+           VALUES ($1, $2, $3, 'viceDean', $4, $5, 'active')
+           ON CONFLICT (username) DO UPDATE 
+            SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = EXCLUDED.email, status = 'active', updated_at = NOW()
+           RETURNING id, username, full_name AS "name", email, campus, role, status`,
+          [username, hash, name || 'Vice Dean', cleanCampus, email || null]
+        )
+
+        // Notify Super Admin of new Vice Dean creation
+        try {
+          await client.query(
+            `INSERT INTO app_notification (recipient_id, recipient_role, campus, title, message, type, link, is_read, created_at)
+             VALUES ($1, 'admin', $2, 'New Vice Dean Account', 'A new Vice Dean account has been created: ${name || username} for campus ${cleanCampus}', 'info', '/admin/users?type=viceDean', false, NOW())`,
+            [result.rows[0].id, cleanCampus]
+          )
+        } catch (e) {
+          // Continue even if notification fails
+        }
+
+        return res.status(201).json({ viceDean: result.rows[0], user: result.rows[0] })
+      }
 
       // If creating a Dean user (Super Admin only)
       if (role === 'dean') {
@@ -133,6 +248,16 @@ export default async function handler(req, res) {
         const cleanCampus = campus.trim()
         const rawUsername = email ? email.split('@')[0] : `dean.${cleanCampus.toLowerCase().replace(/\s+/g, '')}`
         const username = rawUsername.trim()
+
+        // Check if a user with this username already exists
+        const existingUser = await client.query(
+          `SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
+          [username]
+        )
+        if (existingUser.rows.length > 0) {
+          return res.status(409).json({ message: 'A user with this username or email already exists.' })
+        }
+
         const initialPassword = password || 'Dean@Dilla2026!'
         const hash = await hashPassword(initialPassword)
 
@@ -140,7 +265,7 @@ export default async function handler(req, res) {
           `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status)
            VALUES ($1, $2, $3, 'dean', $4, $5, 'active')
            ON CONFLICT (username) DO UPDATE 
-           SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = EXCLUDED.email, status = 'active', updated_at = NOW()
+            SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = EXCLUDED.email, status = 'active', updated_at = NOW()
            RETURNING id, username, full_name AS "name", email, campus, role, status`,
           [username, hash, name || 'Campus Dean', cleanCampus, email || null]
         )
@@ -175,8 +300,17 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'Student ID and full name are required' })
       }
 
-      // Automatically assign campus: if Dean, strictly Dean's campus; if Admin, require or assign campus
-      const targetCampus = auth.user.role === 'dean' ? auth.user.campus : (campus && campus.trim() ? campus.trim() : 'Main Campus')
+      // Check for duplicate student ID
+      const existingStudent = await client.query(
+        `SELECT id FROM student WHERE LOWER(student_id) = LOWER($1) OR LOWER(full_name) = LOWER($1)`,
+        [studentId]
+      )
+      if (existingStudent.rows.length > 0) {
+        return res.status(409).json({ message: 'A student with this Student ID already exists.' })
+      }
+
+      // Automatically assign campus: if Dean/Vice Dean, strictly their campus; if Admin, require or assign campus
+      const targetCampus = auth.user.role === 'dean' || auth.user.role === 'viceDean' ? auth.user.campus : (campus && campus.trim() ? campus.trim() : 'Main Campus')
 
       const result = await client.query(
         `INSERT INTO student (student_id, full_name, gender, campus, department, program, year_of_study, phone, email, academic_year, application_status)
@@ -190,11 +324,24 @@ export default async function handler(req, res) {
       // Ensure student also has an app_user login account
       const studentPassword = password || 'Student@Dilla2026!'
       const studentHash = await hashPassword(studentPassword)
+      const userUsername = studentId
+
+      // Check if a user with this username already exists
+      const existingUser = await client.query(
+        `SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
+        [userUsername]
+      )
+      if (existingUser.rows.length > 0) {
+        // Student record was created but user already exists - clean up student
+        await client.query(`DELETE FROM student WHERE student_id = $1`, [studentId])
+        return res.status(409).json({ message: 'A user account with this Student ID already exists.' })
+      }
+
       await client.query(
         `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status)
          VALUES ($1, $2, $3, 'student', $4, $5, 'active')
          ON CONFLICT (username) DO UPDATE 
-         SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = COALESCE(EXCLUDED.email, app_user.email), updated_at = NOW()`,
+          SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = COALESCE(EXCLUDED.email, app_user.email), updated_at = NOW()`,
         [studentId, studentHash, fullName, targetCampus, email || null]
       )
 
@@ -257,15 +404,26 @@ export default async function handler(req, res) {
         return res.status(404).json({ message: 'User or student record not found' })
       }
 
-      // 2. Lower roles cannot manage Super Admin accounts
+      // 2. Role hierarchy checks
+      // Super Admin accounts cannot be deactivated, suspended, or demoted
+      if (target.role === 'admin' && status && status !== 'active') {
+        return res.status(403).json({ message: 'Forbidden: Super Admin accounts cannot be deactivated or suspended.' })
+      }
+      if (target.role === 'admin' && body.role && body.role !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden: Super Admin accounts cannot be demoted.' })
+      }
+
+      // Only Super Admin can modify admin/Vice Dean accounts
       if (target.role === 'admin' && auth.user.role !== 'admin') {
-        return res.status(403).json({ message: 'Forbidden: Lower roles cannot modify Super Admin accounts.' })
+        return res.status(403).json({ message: 'Forbidden: Only Super Admin can modify Super Admin accounts.' })
       }
 
-      if (target.role === 'dean' && auth.user.role !== 'admin') {
-        return res.status(403).json({ message: 'Forbidden: Only Super Admin can modify Campus Dean accounts.' })
+      // Vice Dean cannot modify admin accounts
+      if (target.role === 'admin' && auth.user.role === 'viceDean') {
+        return res.status(403).json({ message: 'Forbidden: Vice Dean cannot modify Super Admin accounts.' })
       }
 
+      // Dean cannot modify other campus's students
       if (target.role === 'student' && auth.user.role === 'dean') {
         if (target.campus && auth.user.campus && target.campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
           return res.status(403).json({ message: 'Forbidden: Cannot modify students of another campus.' })
@@ -273,6 +431,26 @@ export default async function handler(req, res) {
         if (campus && campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
           return res.status(403).json({ message: 'Forbidden: Campus Dean cannot reassign student to another campus.' })
         }
+      }
+
+      // Vice Dean cannot modify students outside their campus
+      if (target.role === 'student' && auth.user.role === 'viceDean') {
+        if (target.campus && auth.user.campus && target.campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
+          return res.status(403).json({ message: 'Forbidden: Vice Dean cannot modify students of another campus.' })
+        }
+        if (campus && campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
+          return res.status(403).json({ message: 'Forbidden: Vice Dean cannot reassign student to another campus.' })
+        }
+      }
+
+      // Super Admin can modify any role's account
+      if (target.role === 'viceDean' && auth.user.role === 'admin') {
+        // Super Admin can modify Vice Dean accounts - allowed
+      }
+
+      // Vice Dean cannot modify Super Admin
+      if (target.role === 'admin' && auth.user.role === 'viceDean') {
+        return res.status(403).json({ message: 'Forbidden: Vice Dean cannot modify Super Admin accounts.' })
       }
 
       const cleanName = fullName || name || null
@@ -355,6 +533,19 @@ export default async function handler(req, res) {
         }
       }
 
+      // 5. Notify Super Admin when Vice Dean account is modified
+      if (target.role === 'viceDean' && auth.user.role === 'viceDean') {
+        try {
+          await client.query(
+            `INSERT INTO app_notification (recipient_id, recipient_role, campus, title, message, type, link, is_read, created_at)
+             VALUES ($1, 'admin', $2, 'Vice Dean Account Modified', 'Vice Dean ${target.name || target.username} account has been modified by Vice Dean', 'warning', '/admin/users?type=viceDean', false, NOW())`,
+            [auth.user.id, target.campus || 'Main Campus']
+          )
+        } catch (e) {
+          // Continue even if notification fails
+        }
+      }
+
       return res.status(200).json({
         message: 'User and student records updated successfully',
         user: updatedUser || target,
@@ -367,9 +558,9 @@ export default async function handler(req, res) {
     }
   }
 
-  // DELETE: Delete user or student record (Super Admin only, or Dean for campus students)
+  // DELETE: Delete user or student record
   if (req.method === 'DELETE') {
-    if (auth.user.role !== 'admin' && auth.user.role !== 'dean') {
+    if (auth.user.role !== 'admin' && auth.user.role !== 'viceDean' && auth.user.role !== 'dean') {
       return res.status(403).json({ message: 'Forbidden: Insufficient permissions to delete records.' })
     }
 
@@ -382,7 +573,7 @@ export default async function handler(req, res) {
 
       // 1. Fetch target from app_user or student
       let targetRes = await client.query(
-        'SELECT id, username, role, campus FROM app_user WHERE id::text = $1 OR LOWER(username) = LOWER($1)',
+        `SELECT id, username, role, campus FROM app_user WHERE id::text = $1 OR LOWER(username) = LOWER($1)`,
         [targetId]
       )
 
@@ -409,9 +600,24 @@ export default async function handler(req, res) {
         }
       }
 
-      // Prevent Super Admin from deleting own active account
-      if (target.id === auth.user.id || target.username === auth.user.username) {
-        return res.status(400).json({ message: 'Cannot delete your own active account.' })
+      // Vice Dean can only delete students within their own campus
+      if (auth.user.role === 'viceDean') {
+        if (target.role !== 'student') {
+          return res.status(403).json({ message: 'Forbidden: Vice Dean can only delete student records.' })
+        }
+        if (target.campus && target.campus.toLowerCase() !== auth.user.campus.toLowerCase()) {
+          return res.status(403).json({ message: 'Forbidden: Cannot delete student from another campus.' })
+        }
+      }
+
+      // Super Admin accounts cannot be deleted by anyone (including self or other admins)
+      if (target.role === 'admin') {
+        return res.status(403).json({ message: 'Forbidden: Super Admin accounts cannot be deleted.' })
+      }
+
+      // Prevent Vice Dean from being deleted by lower roles
+      if (target.role === 'viceDean' && auth.user.role !== 'admin' && auth.user.role !== 'viceDean') {
+        return res.status(403).json({ message: 'Forbidden: Only Admin or Vice Dean can delete Vice Dean accounts.' })
       }
 
       // 2. Clean up associated records
