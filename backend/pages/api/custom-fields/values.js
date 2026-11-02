@@ -22,7 +22,9 @@ export default async function handler(req, res) {
     try {
       // 1. Verify access permissions
       const studentRes = await client.query(
-        `SELECT id, student_id AS "studentId", full_name AS "fullName", campus FROM student WHERE student_id = $1 OR id::text = $1`,
+        `SELECT id, student_id AS "studentId", full_name AS "fullName", campus, is_non_cafeteria AS "isNonCafeteria" 
+         FROM student 
+         WHERE student_id = $1 OR id::text = $1`,
         [rawStudentId]
       )
 
@@ -60,6 +62,7 @@ export default async function handler(req, res) {
           COALESCE(visible_dean, true) AS "visibleDean",
           COALESCE(display_order, 0) AS "displayOrder",
           COALESCE(validation_rules, '{}'::jsonb) AS "validationRules",
+          COALESCE(applies_to, 'all') AS "appliesTo",
           campus
         FROM custom_field_definition
         WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))
@@ -86,10 +89,19 @@ export default async function handler(req, res) {
         valuesMap[r.fieldKey] = r.value
       })
 
-      const fieldsWithValues = fieldsRes.rows.map((f) => ({
-        ...f,
-        value: valuesMap[f.fieldKey] !== undefined ? valuesMap[f.fieldKey] : null,
-      }))
+      const isStudentNonCafe = Boolean(student.isNonCafeteria)
+      const fieldsWithValues = fieldsRes.rows
+        .filter((f) => {
+          const applies = f.appliesTo || 'all'
+          if (applies === 'all') return true
+          if (isStudentNonCafe && applies === 'non-cafe') return true
+          if (!isStudentNonCafe && applies === 'cafe') return true
+          return false
+        })
+        .map((f) => ({
+          ...f,
+          value: valuesMap[f.fieldKey] !== undefined ? valuesMap[f.fieldKey] : null,
+        }))
 
       return res.status(200).json({
         studentId: student.studentId,
@@ -125,7 +137,9 @@ export default async function handler(req, res) {
     try {
       // 1. Verify student exists
       const studentRes = await client.query(
-        `SELECT id, student_id AS "studentId", full_name AS "fullName", campus FROM student WHERE student_id = $1 OR id::text = $1`,
+        `SELECT id, student_id AS "studentId", full_name AS "fullName", campus, is_non_cafeteria AS "isNonCafeteria" 
+         FROM student 
+         WHERE student_id = $1 OR id::text = $1`,
         [rawStudentId]
       )
 
@@ -134,6 +148,7 @@ export default async function handler(req, res) {
       }
 
       const student = studentRes.rows[0]
+      const isStudentNonCafe = Boolean(student.isNonCafeteria)
 
       if (userRole === 'student') {
         const myId = (user.studentId || user.username || '').toLowerCase()
@@ -156,6 +171,7 @@ export default async function handler(req, res) {
            options, 
            is_required AS "isRequired",
            COALESCE(is_student_editable, true) AS "isStudentEditable",
+           COALESCE(applies_to, 'all') AS "appliesTo",
            validation_rules AS "validationRules"
          FROM custom_field_definition
          WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))`,
@@ -176,15 +192,19 @@ export default async function handler(req, res) {
 
       // 4. Validate inputs
       const validatedEntries = []
-      const isPartialUpdate = Object.keys(values).length < definitions.length
 
       for (const def of definitions) {
+        const applies = def.appliesTo || 'all'
+        // Filter by cafe / non-cafe applicability
+        if (applies === 'cafe' && isStudentNonCafe) continue
+        if (applies === 'non-cafe' && !isStudentNonCafe) continue
+
         const hasKey = Object.prototype.hasOwnProperty.call(values, def.fieldKey)
         const val = values[def.fieldKey]
         const valStr = val !== undefined && val !== null ? String(val).trim() : ''
         const existingVal = existingValuesMap[def.fieldKey] !== undefined ? String(existingValuesMap[def.fieldKey]).trim() : ''
 
-        // REQUIREMENT 8: Read-only fields cannot be changed by the student
+        // Read-only fields cannot be changed by the student
         if (userRole === 'student' && def.isStudentEditable === false && existingVal !== '') {
           if (hasKey && valStr !== existingVal) {
             return res.status(403).json({

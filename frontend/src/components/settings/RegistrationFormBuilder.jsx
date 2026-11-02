@@ -71,6 +71,16 @@ const RegistrationFormBuilder = ({
     visibleAdmin: true,
     displayOrder: 0,
     campus: 'all',
+    appliesTo: 'all',
+  })
+
+  // Submissions Viewer Modal State
+  const [submissionsModal, setSubmissionsModal] = useState({
+    isOpen: false,
+    field: null,
+    submissions: [],
+    loading: false,
+    error: null,
   })
 
   // Delete & Confirmation state
@@ -127,8 +137,46 @@ const RegistrationFormBuilder = ({
       visibleAdmin: true,
       displayOrder: fields.length + 1,
       campus: userRole === 'dean' ? (userCampus || 'Main Campus') : 'all',
+      appliesTo: 'all',
     })
     setIsModalOpen(true)
+  }
+
+
+  const handleOpenSubmissionsModal = async (field) => {
+    setSubmissionsModal({
+      isOpen: true,
+      field,
+      submissions: [],
+      loading: true,
+      error: null,
+    })
+    const token = localStorage.getItem('token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+
+    try {
+      const res = await fetch(`/api/custom-fields/submissions?fieldId=${encodeURIComponent(field.id)}`, { headers })
+      const data = await res.json()
+      if (res.ok) {
+        setSubmissionsModal((prev) => ({
+          ...prev,
+          submissions: data.submissions || [],
+          loading: false,
+        }))
+      } else {
+        setSubmissionsModal((prev) => ({
+          ...prev,
+          error: data.message || 'Failed to load field submissions',
+          loading: false,
+        }))
+      }
+    } catch (err) {
+      setSubmissionsModal((prev) => ({
+        ...prev,
+        error: 'Network error loading field submissions',
+        loading: false,
+      }))
+    }
   }
 
   const handleOpenEditModal = (field) => {
@@ -153,6 +201,7 @@ const RegistrationFormBuilder = ({
       visibleAdmin: field.visibleAdmin !== false,
       displayOrder: field.displayOrder !== undefined ? field.displayOrder : 0,
       campus: field.campus || 'all',
+      appliesTo: field.appliesTo || field.applies_to || 'all',
     })
     setIsModalOpen(true)
   }
@@ -215,6 +264,7 @@ const RegistrationFormBuilder = ({
       visibleAdmin: formData.visibleAdmin,
       displayOrder: parseInt(formData.displayOrder) || 0,
       campus: formData.campus === 'all' ? null : formData.campus,
+      appliesTo: formData.appliesTo || 'all',
     }
 
     try {
@@ -529,6 +579,21 @@ const RegistrationFormBuilder = ({
                         )}
                       </td>
 
+                      {/* Applicability */}
+                      <td className="py-3 px-3">
+                        <span
+                          className={`px-2 py-0.5 rounded font-bold text-[10px] border ${
+                            field.appliesTo === 'cafe'
+                              ? 'bg-blue-50 text-blue-900 border-blue-200'
+                              : field.appliesTo === 'non-cafe'
+                              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {field.appliesTo === 'cafe' ? 'Cafe Only' : field.appliesTo === 'non-cafe' ? 'Non-Cafe Only' : 'All Students'}
+                        </span>
+                      </td>
+
                       {/* Governance Badges */}
                       <td className="py-3 px-3">
                         <div className="flex flex-col gap-1 items-start">
@@ -572,9 +637,15 @@ const RegistrationFormBuilder = ({
                       {/* Student Responses Count */}
                       <td className="py-3 px-3">
                         {field.responseCount > 0 ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-full font-bold text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSubmissionsModal(field)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-full font-bold text-[10px] cursor-pointer transition-colors"
+                            title="Click to view student submissions"
+                          >
+                            <Icon name="file-text" className="w-3 h-3" />
                             {field.responseCount} saved
-                          </span>
+                          </button>
                         ) : (
                           <span className="text-slate-400 text-[10px] italic">0 responses</span>
                         )}
@@ -598,6 +669,11 @@ const RegistrationFormBuilder = ({
                       <td className="py-3 px-3 text-right">
                         <ActionMenu
                           items={[
+                            {
+                              label: 'View Submissions',
+                              icon: 'file-text',
+                              onClick: () => handleOpenSubmissionsModal(field),
+                            },
                             {
                               label: 'Edit Configuration',
                               icon: 'edit',
@@ -875,6 +951,24 @@ const RegistrationFormBuilder = ({
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Student Applicability Policy *
+                </label>
+                <select
+                  value={formData.appliesTo}
+                  onChange={(e) => setFormData((p) => ({ ...p, appliesTo: e.target.value }))}
+                  className="w-full h-9 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+                >
+                  <option value="all">All Eligible Students (Universal)</option>
+                  <option value="cafe">Cafeteria Beneficiary Students Only</option>
+                  <option value="non-cafe">Non-Cafeteria Subsidy Students Only</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Controls whether this requirement applies to cafe dining students, non-cafe students, or all students.
+                </p>
+              </div>
+
               {/* Options for dropdown, radio, or selectors */}
               {['select', 'radio', 'checkbox', 'department', 'batch'].includes(formData.fieldType) && (
                 <div>
@@ -1062,6 +1156,105 @@ const RegistrationFormBuilder = ({
         isLoading={deleteModalState.isLoading}
         danger
       />
+
+      {/* Submissions Viewer Modal */}
+      {submissionsModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-slate-50/70">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Icon name="file-text" className="w-5 h-5 text-dillaGreen" />
+                  <h3 className="text-base font-bold text-slate-900">
+                    Student Submissions: {submissionsModal.field?.label}
+                  </h3>
+                  <span className="font-mono text-xs px-2 py-0.5 bg-slate-200 rounded text-slate-700">
+                    {submissionsModal.field?.fieldKey}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Real-time database responses recorded for this registration field
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubmissionsModal({ isOpen: false, field: null, submissions: [], loading: false, error: null })}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <Icon name="x" className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1">
+              {submissionsModal.loading ? (
+                <div className="py-12 text-center text-xs text-slate-500">
+                  Loading student submissions...
+                </div>
+              ) : submissionsModal.error ? (
+                <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs">
+                  {submissionsModal.error}
+                </div>
+              ) : submissionsModal.submissions.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs">
+                  No student responses recorded for this field yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
+                        <th className="py-2.5 px-3">Student ID</th>
+                        <th className="py-2.5 px-3">Student Name</th>
+                        <th className="py-2.5 px-3">Campus</th>
+                        <th className="py-2.5 px-3">Category</th>
+                        <th className="py-2.5 px-3">Submitted Value</th>
+                        <th className="py-2.5 px-3">Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {submissionsModal.submissions.map((sub) => (
+                        <tr key={sub.submissionId || sub.studentId} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{sub.studentId}</td>
+                          <td className="py-2.5 px-3">{sub.studentName}</td>
+                          <td className="py-2.5 px-3">{sub.campus || 'Main Campus'}</td>
+                          <td className="py-2.5 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                sub.isNonCafeteria ? 'bg-emerald-100 text-emerald-900' : 'bg-blue-100 text-blue-900'
+                              }`}
+                            >
+                              {sub.isNonCafeteria ? 'Non-Cafe' : 'Cafe'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-medium text-slate-900 max-w-xs break-words">
+                            {sub.value || <span className="italic text-slate-400">Empty</span>}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                            {new Date(sub.submittedAt || sub.updatedAt).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <span className="text-xs text-slate-500">
+                {submissionsModal.submissions.length} submission{submissionsModal.submissions.length === 1 ? '' : 's'} displayed
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => setSubmissionsModal({ isOpen: false, field: null, submissions: [], loading: false, error: null })}
+                className="text-xs"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

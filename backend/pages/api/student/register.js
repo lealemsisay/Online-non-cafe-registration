@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   const auth = authorize(req, ['student', 'dean', 'admin'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
-  // TASK 4: Enforce registration schedule window in backend
+  // Enforce registration schedule window in backend
   const windowCheck = await checkRegistrationWindow()
   if (!windowCheck.isOpen) {
     return res.status(403).json({
@@ -73,13 +73,21 @@ export default async function handler(req, res) {
 
       // Check and save custom registration fields
       const defsRes = await client.query(
-        `SELECT id, field_key, label, field_type, options, is_required FROM custom_field_definition 
+        `SELECT id, field_key, label, field_type, options, is_required, COALESCE(applies_to, 'all') AS applies_to 
+         FROM custom_field_definition 
          WHERE is_active = true AND (campus IS NULL OR LOWER(campus) = LOWER($1))`,
         [campus]
       )
 
       const valuesObj = customValues && typeof customValues === 'object' ? customValues : {}
+      const isStudentNonCafe = isNonCafeteria === true
+
       for (const def of defsRes.rows) {
+        const appliesTo = def.applies_to || 'all'
+        // Filter by cafe / non-cafe applicability
+        if (appliesTo === 'cafe' && isStudentNonCafe) continue
+        if (appliesTo === 'non-cafe' && !isStudentNonCafe) continue
+
         const val = valuesObj[def.field_key]
         const valStr = val !== undefined && val !== null ? String(val).trim() : ''
 

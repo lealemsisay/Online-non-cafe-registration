@@ -31,6 +31,16 @@ const RegistrationForm = ({
   const [customFields, setCustomFields] = useState([])
   const [customValues, setCustomValues] = useState(initialData?.customValues || {})
 
+  // Filter custom fields by role visibility and cafe / non-cafe applicability
+  const applicableCustomFields = customFields.filter((f) => {
+    if (f.visibleStudent === false) return false
+    const applies = f.appliesTo || f.applies_to || 'all'
+    if (applies === 'all') return true
+    if (formData.isNonCafeteria && applies === 'non-cafe') return true
+    if (!formData.isNonCafeteria && applies === 'cafe') return true
+    return false
+  })
+
   const defaultDepartments = [
     'Computer Science',
     'Information Technology',
@@ -179,8 +189,8 @@ const RegistrationForm = ({
       return
     }
 
-    // Validate required custom fields
-    for (const f of customFields) {
+    // Validate required custom fields that apply to this student
+    for (const f of applicableCustomFields) {
       if (f.isRequired) {
         const val = customValues[f.fieldKey]
         if (val === undefined || val === null || String(val).trim() === '') {
@@ -448,7 +458,7 @@ const RegistrationForm = ({
         </div>
 
         {/* 4. Campus Custom Information */}
-        {customFields.filter((f) => f.visibleStudent !== false).length > 0 && (
+        {applicableCustomFields.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100">
               <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
@@ -459,8 +469,7 @@ const RegistrationForm = ({
               </h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-              {[...customFields]
-                .filter((f) => f.visibleStudent !== false)
+              {[...applicableCustomFields]
                 .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
                 .map((field) => {
                   const val = customValues[field.fieldKey] !== undefined ? customValues[field.fieldKey] : ''
@@ -716,7 +725,7 @@ const RegistrationForm = ({
         <div>
           <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
             <span className="w-6 h-6 rounded-full bg-dillaGreen text-white text-xs font-bold flex items-center justify-center">
-              {customFields.length > 0 ? '5' : '4'}
+              {applicableCustomFields.length > 0 ? '5' : '4'}
             </span>
             <h2 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
               Verification Document Upload (PDF Registration Slip)

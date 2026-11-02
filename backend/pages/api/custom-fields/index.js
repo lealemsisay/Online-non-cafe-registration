@@ -49,7 +49,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const client = await pool.connect()
     try {
-      const { campus, all } = req.query || {}
+      const { campus, all, appliesTo, category } = req.query || {}
       let query = `
         SELECT 
           d.id, 
@@ -59,6 +59,7 @@ export default async function handler(req, res) {
           d.options, 
           d.is_required AS "isRequired", 
           d.is_active AS "isActive", 
+          COALESCE(d.applies_to, 'all') AS "appliesTo",
           d.placeholder,
           d.help_text AS "helpText",
           COALESCE(d.is_student_editable, true) AS "isStudentEditable",
@@ -80,6 +81,13 @@ export default async function handler(req, res) {
       // If not requesting all (e.g. for student registration forms), only return active fields
       if (all !== 'true' && all !== true) {
         query += ` AND d.is_active = true`
+      }
+
+      // Filter by applicability: 'cafe' | 'non-cafe'
+      const effectiveCategory = (appliesTo || category || '').toLowerCase().trim()
+      if (effectiveCategory && ['cafe', 'non-cafe'].includes(effectiveCategory)) {
+        params.push(effectiveCategory)
+        query += ` AND (d.applies_to = 'all' OR d.applies_to = $${params.length})`
       }
 
       // Filter by role visibility
@@ -124,6 +132,8 @@ export default async function handler(req, res) {
       options,
       isRequired,
       isActive,
+      appliesTo,
+      applies_to,
       placeholder,
       helpText,
       isStudentEditable,
@@ -154,6 +164,9 @@ export default async function handler(req, res) {
         message: `Invalid fieldType '${fieldType}'. Supported: ${SUPPORTED_FIELD_TYPES.join(', ')}`,
       })
     }
+
+    const rawApplies = (appliesTo || applies_to || 'all').toLowerCase().trim()
+    const cleanAppliesTo = ['cafe', 'non-cafe'].includes(rawApplies) ? rawApplies : 'all'
 
     let parsedOptions = []
     if (['select', 'radio', 'checkbox', 'department', 'batch'].includes(fieldType)) {
@@ -198,11 +211,11 @@ export default async function handler(req, res) {
 
       const insertRes = await client.query(
         `INSERT INTO custom_field_definition (
-           field_key, label, field_type, options, is_required, is_active, 
+           field_key, label, field_type, options, is_required, is_active, applies_to,
            placeholder, help_text, is_student_editable, visible_student, visible_admin, visible_dean, 
            display_order, validation_rules, campus, created_by, created_at, updated_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
          RETURNING 
            id, 
            field_key AS "fieldKey", 
@@ -211,6 +224,7 @@ export default async function handler(req, res) {
            options, 
            is_required AS "isRequired", 
            is_active AS "isActive", 
+           COALESCE(applies_to, 'all') AS "appliesTo",
            placeholder,
            help_text AS "helpText",
            is_student_editable AS "isStudentEditable",
@@ -230,6 +244,7 @@ export default async function handler(req, res) {
           JSON.stringify(parsedOptions),
           isRequired === true,
           isActive !== false,
+          cleanAppliesTo,
           placeholder ? String(placeholder).trim() : null,
           helpText ? String(helpText).trim() : null,
           isStudentEditable !== false,
@@ -281,6 +296,8 @@ export default async function handler(req, res) {
       options,
       isRequired,
       isActive,
+      appliesTo,
+      applies_to,
       placeholder,
       helpText,
       isStudentEditable,
@@ -330,6 +347,13 @@ export default async function handler(req, res) {
         }
       }
 
+      let cleanAppliesTo = null
+      const rawApplies = appliesTo !== undefined ? appliesTo : applies_to
+      if (rawApplies !== undefined) {
+        const val = String(rawApplies).toLowerCase().trim()
+        cleanAppliesTo = ['cafe', 'non-cafe'].includes(val) ? val : 'all'
+      }
+
       const updateRes = await client.query(
         `UPDATE custom_field_definition
          SET label = COALESCE($1, label),
@@ -345,8 +369,9 @@ export default async function handler(req, res) {
              visible_dean = COALESCE($11, visible_dean),
              display_order = COALESCE($12, display_order),
              validation_rules = COALESCE($13, validation_rules),
+             applies_to = COALESCE($14, applies_to),
              updated_at = NOW()
-         WHERE id = $14
+         WHERE id = $15
          RETURNING 
            id, 
            field_key AS "fieldKey", 
@@ -355,6 +380,7 @@ export default async function handler(req, res) {
            options, 
            is_required AS "isRequired", 
            is_active AS "isActive", 
+           COALESCE(applies_to, 'all') AS "appliesTo",
            placeholder,
            help_text AS "helpText",
            is_student_editable AS "isStudentEditable",
@@ -381,6 +407,7 @@ export default async function handler(req, res) {
           visibleDean !== undefined ? Boolean(visibleDean) : null,
           displayOrder !== undefined ? parseInt(displayOrder) : null,
           validationRules ? JSON.stringify(validationRules) : null,
+          cleanAppliesTo,
           id,
         ]
       )
@@ -432,7 +459,7 @@ export default async function handler(req, res) {
       )
       const studentCount = countRes.rows[0]?.count || 0
 
-      // REQUIREMENT 2: Warn before deleting fields that contain existing student data.
+      // Warn before deleting fields that contain existing student data.
       // Prefer deactivation or archival over permanently deleting fields with saved data.
       if (studentCount > 0 && force !== 'true' && force !== true) {
         return res.status(409).json({

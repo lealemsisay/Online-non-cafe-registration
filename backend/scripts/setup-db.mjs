@@ -47,6 +47,8 @@ async function run() {
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS photo_url text;
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS phone text;
+    ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_role_check;
+    ALTER TABLE app_user ADD CONSTRAINT app_user_role_check CHECK (role IN ('student','dean','admin','viceDean'));
 
     CREATE TABLE IF NOT EXISTS system_setting (
       key text PRIMARY KEY,
@@ -150,6 +152,7 @@ async function run() {
     ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS visible_dean boolean NOT NULL DEFAULT true;
     ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS display_order integer NOT NULL DEFAULT 0;
     ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS validation_rules jsonb DEFAULT '{}'::jsonb;
+    ALTER TABLE custom_field_definition ADD COLUMN IF NOT EXISTS applies_to text NOT NULL DEFAULT 'all';
 
     INSERT INTO system_setting (key, value)
     VALUES 

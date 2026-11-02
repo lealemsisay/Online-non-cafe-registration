@@ -64,6 +64,14 @@ export default async function handler(req, res) {
 
       const registrationWindow = await checkRegistrationWindow(client)
 
+      const auditRes = await client.query(
+        `SELECT id, action, performed_by AS "performedBy", target_id AS "targetId", details, created_at AS "createdAt"
+         FROM audit_log
+         WHERE action IN ('update_schedule', 'enable_late_registration', 'disable_late_registration', 'toggle_late_registration')
+         ORDER BY created_at DESC
+         LIMIT 25`
+      )
+
       return res.status(200).json({
         academicYears: yearRes.rows.map(y => y.year),
         academicYearDetails: yearRes.rows,
@@ -72,6 +80,7 @@ export default async function handler(req, res) {
         programs,
         systemSettings,
         registrationWindow,
+        scheduleAuditHistory: auditRes.rows,
       })
     } catch (error) {
       console.error('Error fetching settings:', error)
@@ -89,7 +98,7 @@ export default async function handler(req, res) {
     const client = await pool.connect()
     try {
       const body = req.body || {}
-      const { newAcademicYear, academicYear, systemSettings, schedule } = body
+      const { newAcademicYear, academicYear, systemSettings, schedule, reason } = body
 
       // Add academic year if provided
       const yearToAdd = (newAcademicYear || academicYear || '').trim()
@@ -136,14 +145,48 @@ export default async function handler(req, res) {
         settingsToSave.max_photo_size_mb = parsedLimit
       }
 
-      // Also merge schedule if provided
+      // Schedule and Late Registration processing
+      let scheduleAuditAction = null
+      let scheduleAuditDetails = null
+
       if (schedule && typeof schedule === 'object') {
+        const effectiveStartDate = schedule.startDate !== undefined ? schedule.startDate : settingsToSave.registration_start_date
+        const effectiveEndDate = schedule.endDate !== undefined ? schedule.endDate : settingsToSave.registration_end_date
+
+        // Validate closing time is not earlier than opening time
+        if (effectiveStartDate && effectiveEndDate) {
+          const sTime = new Date(effectiveStartDate).getTime()
+          const eTime = new Date(effectiveEndDate).getTime()
+          if (!isNaN(sTime) && !isNaN(eTime) && eTime < sTime) {
+            return res.status(400).json({
+              message: 'Registration closing date & time cannot be earlier than opening date & time.',
+            })
+          }
+        }
+
         if (schedule.startDate !== undefined) settingsToSave.registration_start_date = schedule.startDate
         if (schedule.endDate !== undefined) settingsToSave.registration_end_date = schedule.endDate
         if (schedule.isOpen !== undefined) settingsToSave.registration_is_open = Boolean(schedule.isOpen)
+        
+        let lateRegToggled = false
         if (schedule.allowLate !== undefined) {
-          settingsToSave.allow_late_registration = Boolean(schedule.allowLate)
-          settingsToSave.allowLateRegistration = Boolean(schedule.allowLate)
+          const newAllowLate = Boolean(schedule.allowLate)
+          settingsToSave.allow_late_registration = newAllowLate
+          settingsToSave.allowLateRegistration = newAllowLate
+          lateRegToggled = true
+        }
+
+        const effectiveReason = (reason || schedule.reason || '').trim() || 
+          (lateRegToggled && schedule.allowLate ? 'Late registration window authorized by administrator' : 'Registration schedule updated')
+
+        scheduleAuditAction = lateRegToggled ? (schedule.allowLate ? 'enable_late_registration' : 'disable_late_registration') : 'update_schedule'
+        scheduleAuditDetails = {
+          startDate: settingsToSave.registration_start_date,
+          endDate: settingsToSave.registration_end_date,
+          isOpen: settingsToSave.registration_is_open,
+          allowLate: settingsToSave.allow_late_registration,
+          reason: effectiveReason,
+          timestamp: new Date().toISOString(),
         }
       }
 
@@ -153,6 +196,19 @@ export default async function handler(req, res) {
            VALUES ($1, $2, NOW())
            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
           [key, JSON.stringify(value)]
+        )
+      }
+
+      // Record schedule change to audit_log
+      if (scheduleAuditAction && scheduleAuditDetails) {
+        await client.query(
+          `INSERT INTO audit_log (action, performed_by, target_id, target_type, details)
+           VALUES ($1, $2, 'registration_schedule', 'system_setting', $3)`,
+          [
+            scheduleAuditAction,
+            auth.user.username || auth.user.email || 'admin',
+            JSON.stringify(scheduleAuditDetails),
+          ]
         )
       }
 
@@ -173,10 +229,19 @@ export default async function handler(req, res) {
         )
       }
 
+      const auditRes = await client.query(
+        `SELECT id, action, performed_by AS "performedBy", target_id AS "targetId", details, created_at AS "createdAt"
+         FROM audit_log
+         WHERE action IN ('update_schedule', 'enable_late_registration', 'disable_late_registration', 'toggle_late_registration')
+         ORDER BY created_at DESC
+         LIMIT 25`
+      )
+
       return res.status(200).json({
         message: 'Settings saved successfully',
         academicYears: yearRes.rows.map(y => y.year),
         registrationWindow: windowStatus,
+        scheduleAuditHistory: auditRes.rows,
       })
     } catch (error) {
       console.error('Error saving settings:', error)

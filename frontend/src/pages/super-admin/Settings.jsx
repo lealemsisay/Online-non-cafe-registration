@@ -36,7 +36,9 @@ const Settings = () => {
     endDate: '',
     isOpen: true,
     allowLate: false,
+    reason: '',
   })
+  const [scheduleAuditHistory, setScheduleAuditHistory] = useState([])
   const [windowStatus, setWindowStatus] = useState({ isOpen: true, reason: '' })
 
   const [loading, setLoading] = useState(true)
@@ -78,6 +80,9 @@ const Settings = () => {
         if (data.registrationWindow) {
           setWindowStatus(data.registrationWindow)
         }
+        if (data.scheduleAuditHistory) {
+          setScheduleAuditHistory(data.scheduleAuditHistory)
+        }
       }
 
       const campusRes = await fetch('/api/campuses', { headers })
@@ -103,6 +108,17 @@ const Settings = () => {
     setIsSaving(true)
     const token = localStorage.getItem('token')
 
+    // Validate closing date is not earlier than opening date
+    if (scheduleState.startDate && scheduleState.endDate) {
+      const s = new Date(scheduleState.startDate).getTime()
+      const e = new Date(scheduleState.endDate).getTime()
+      if (!isNaN(s) && !isNaN(e) && e < s) {
+        setError('Registration closing date & time cannot be earlier than opening date & time.')
+        setIsSaving(false)
+        return
+      }
+    }
+
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -120,7 +136,9 @@ const Settings = () => {
               : null,
             isOpen: scheduleState.isOpen,
             allowLate: scheduleState.allowLate,
+            reason: scheduleState.reason,
           },
+          reason: scheduleState.reason,
         }),
       })
 
@@ -128,6 +146,8 @@ const Settings = () => {
       if (res.ok) {
         setMessage('Registration schedule updated and enforced successfully.')
         if (data.registrationWindow) setWindowStatus(data.registrationWindow)
+        if (data.scheduleAuditHistory) setScheduleAuditHistory(data.scheduleAuditHistory)
+        setScheduleState((p) => ({ ...p, reason: '' }))
       } else {
         setError(data.message || 'Failed to update schedule')
       }
@@ -686,102 +706,218 @@ const Settings = () => {
 
       {/* TAB 4: REGISTRATION WINDOW & POLICIES */}
       {activeTab === 'schedule' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-          <div className="pb-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+            <div className="pb-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Icon name="calendar" className="w-5 h-5 text-dillaGreen" />
+                  <h2 className="text-lg font-bold text-dillaDarkGreen">
+                    Registration Window & Verification Policies
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Enforced server-side in PostgreSQL. Prevents student submissions outside schedule.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {scheduleState.allowLate && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-900 font-bold text-xs rounded-full border border-amber-300 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    LATE REGISTRATION ACTIVE
+                  </span>
+                )}
+                {windowStatus.isOpen ? (
+                  <span className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-emerald-100 text-emerald-900 font-bold text-xs rounded-full border border-emerald-300 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    WINDOW OPEN
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-rose-100 text-rose-900 font-bold text-xs rounded-full border border-rose-300 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                    WINDOW CLOSED
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Registration Opening Date & Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={scheduleState.startDate}
+                  onChange={(e) => setScheduleState((p) => ({ ...p, startDate: e.target.value }))}
+                  className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Students cannot register before this timestamp.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Registration Closing Date & Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={scheduleState.endDate}
+                  onChange={(e) => setScheduleState((p) => ({ ...p, endDate: e.target.value }))}
+                  className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Students cannot register after this timestamp unless Late Registration is active.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={scheduleState.isOpen}
+                  onChange={(e) => setScheduleState((p) => ({ ...p, isOpen: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 text-dillaGreen rounded border-slate-300 focus:ring-dillaGold"
+                />
+                <div>
+                  <p className="text-sm font-bold text-slate-900">Master Window Switch</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Toggle to manually open or close registration immediately regardless of dates.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-4 bg-amber-50/50 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100/50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={scheduleState.allowLate}
+                  onChange={(e) => setScheduleState((p) => ({ ...p, allowLate: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500"
+                />
+                <div>
+                  <p className="text-sm font-bold text-amber-950">Allow Late Registration (Super Admin)</p>
+                  <p className="text-xs text-amber-800/80 mt-0.5">
+                    Permits students to register outside standard dates. Records authorization audit trail.
+                  </p>
+                </div>
+              </label>
+            </div>
+
             <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Authorization Memo / Reason for Change (Logged in Audit History)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Authorized 7-day extension for semester 2 regular degree applicants"
+                value={scheduleState.reason}
+                onChange={(e) => setScheduleState((p) => ({ ...p, reason: e.target.value }))}
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+              />
+            </div>
+
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+              <span className="text-xs text-slate-500 font-medium">
+                Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone} (UTC stored in DB)
+              </span>
+              <Button
+                onClick={handleSaveSchedule}
+                disabled={isSaving}
+                variant="primary"
+                className="text-xs px-6 py-2.5 font-bold shadow-md"
+              >
+                {isSaving ? 'Updating...' : 'Save Schedule Settings'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Audit History of Schedule Changes */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
               <div className="flex items-center gap-2">
-                <Icon name="calendar" className="w-5 h-5 text-dillaGreen" />
-                <h2 className="text-lg font-bold text-dillaDarkGreen">
-                  Registration Window & Verification Policies
-                </h2>
+                <Icon name="history" className="w-5 h-5 text-dillaGreen" />
+                <h3 className="text-base font-bold text-dillaDarkGreen">
+                  Schedule & Late Registration Audit History
+                </h3>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Enforced server-side in PostgreSQL. Prevents student submissions outside schedule.
-              </p>
+              <span className="text-xs font-semibold text-slate-500">
+                {scheduleAuditHistory.length} Record{scheduleAuditHistory.length === 1 ? '' : 's'}
+              </span>
             </div>
 
-            <div>
-              {windowStatus.isOpen ? (
-                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-emerald-100 text-emerald-900 font-bold text-xs rounded-full border border-emerald-300 shadow-2xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  WINDOW OPEN
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-rose-100 text-rose-900 font-bold text-xs rounded-full border border-rose-300 shadow-2xs">
-                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                  WINDOW CLOSED
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Registration Opening Date & Time (UTC)
-              </label>
-              <input
-                type="datetime-local"
-                value={scheduleState.startDate}
-                onChange={(e) => setScheduleState((p) => ({ ...p, startDate: e.target.value }))}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Registration Closing Date & Time (UTC)
-              </label>
-              <input
-                type="datetime-local"
-                value={scheduleState.endDate}
-                onChange={(e) => setScheduleState((p) => ({ ...p, endDate: e.target.value }))}
-                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={scheduleState.isOpen}
-                onChange={(e) => setScheduleState((p) => ({ ...p, isOpen: e.target.checked }))}
-                className="mt-0.5 w-4 h-4 text-dillaGreen rounded border-slate-300 focus:ring-dillaGold"
-              />
-              <div>
-                <p className="text-sm font-bold text-slate-900">Master Window Switch</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Toggle to manually open or close registration immediately.
-                </p>
+            {scheduleAuditHistory.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 text-xs">
+                No schedule changes logged yet.
               </div>
-            </label>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
+                      <th className="py-2.5 px-3">Timestamp</th>
+                      <th className="py-2.5 px-3">Admin User</th>
+                      <th className="py-2.5 px-3">Action</th>
+                      <th className="py-2.5 px-3">Reason / Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {scheduleAuditHistory.map((item) => {
+                      let parsedDetails = null
+                      try {
+                        parsedDetails = typeof item.details === 'string' ? JSON.parse(item.details) : item.details
+                      } catch {
+                        parsedDetails = { raw: item.details }
+                      }
 
-            <label className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={scheduleState.allowLate}
-                onChange={(e) => setScheduleState((p) => ({ ...p, allowLate: e.target.checked }))}
-                className="mt-0.5 w-4 h-4 text-dillaGreen rounded border-slate-300 focus:ring-dillaGold"
-              />
-              <div>
-                <p className="text-sm font-bold text-slate-900">Allow Late Registration</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Allows students to submit after closing date with approval.
-                </p>
+                      const actionLabels = {
+                        update_schedule: 'Schedule Updated',
+                        enable_late_registration: 'Late Registration Enabled',
+                        disable_late_registration: 'Late Registration Disabled',
+                        toggle_late_registration: 'Late Registration Toggled',
+                      }
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                            {new Date(item.createdAt || item.created_at).toLocaleString()}
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap font-bold text-slate-900">
+                            {item.performedBy || item.performed_by || 'Admin'}
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                item.action?.includes('enable')
+                                  ? 'bg-amber-100 text-amber-900'
+                                  : item.action?.includes('disable')
+                                  ? 'bg-slate-100 text-slate-800'
+                                  : 'bg-emerald-100 text-emerald-900'
+                              }`}
+                            >
+                              {actionLabels[item.action] || item.action}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 max-w-md">
+                            <div className="font-medium text-slate-900">
+                              {parsedDetails?.reason || parsedDetails?.raw || 'Schedule update'}
+                            </div>
+                            {parsedDetails?.startDate && (
+                              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                Window: {parsedDetails.startDate ? new Date(parsedDetails.startDate).toLocaleString() : 'None'} →{' '}
+                                {parsedDetails.endDate ? new Date(parsedDetails.endDate).toLocaleString() : 'None'}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
-            </label>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button
-              onClick={handleSaveSchedule}
-              disabled={isSaving}
-              variant="primary"
-              className="text-xs px-6 py-2.5 font-bold shadow-md"
-            >
-              {isSaving ? 'Updating...' : 'Save Schedule Settings'}
-            </Button>
+            )}
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ import { pool } from '@/drizzle/client'
  * @param {import('pg').PoolClient} [client] - Optional existing database client
  * @returns {Promise<{
  *   isOpen: boolean,
+ *   isLate?: boolean,
  *   reason?: string,
  *   schedule: {
  *     startDate: string | null,
@@ -51,15 +52,22 @@ export async function checkRegistrationWindow(client = null) {
       allowLate,
     }
 
-    // If late registration is allowed, window is open regardless of dates
+    const isPastEnd = endDate && !isNaN(endDate.getTime()) && now > endDate
+
+    // If late registration is allowed, window is open regardless of normal closing
     if (allowLate) {
-      return { isOpen: true, schedule }
+      return {
+        isOpen: true,
+        isLate: Boolean(isPastEnd || !isOpenManually),
+        schedule,
+      }
     }
 
     // If manually closed by Admin
     if (!isOpenManually) {
       return {
         isOpen: false,
+        isLate: false,
         reason: 'Registration is currently closed by the university administration.',
         schedule,
       }
@@ -69,6 +77,7 @@ export async function checkRegistrationWindow(client = null) {
     if (startDate && !isNaN(startDate.getTime()) && now < startDate) {
       return {
         isOpen: false,
+        isLate: false,
         reason: `Registration has not opened yet. It is scheduled to open on ${startDate.toLocaleString('en-US', { timeZone: 'UTC' })} UTC.`,
         schedule,
       }
@@ -78,17 +87,19 @@ export async function checkRegistrationWindow(client = null) {
     if (endDate && !isNaN(endDate.getTime()) && now > endDate) {
       return {
         isOpen: false,
+        isLate: false,
         reason: `Registration window closed on ${endDate.toLocaleString('en-US', { timeZone: 'UTC' })} UTC. Submissions are no longer accepted.`,
         schedule,
       }
     }
 
-    return { isOpen: true, schedule }
+    return { isOpen: true, isLate: false, schedule }
   } catch (err) {
     console.error('Error checking registration window:', err)
     // Default to open in case of error so system doesn't unexpectedly lock up
     return {
       isOpen: true,
+      isLate: false,
       schedule: { startDate: null, endDate: null, isOpenManually: true, allowLate: false },
     }
   } finally {

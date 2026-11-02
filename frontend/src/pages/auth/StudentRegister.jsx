@@ -22,6 +22,7 @@ const StudentRegister = () => {
   })
 
   const [campuses, setCampuses] = useState(['Main Campus', 'Odaya Campus', 'Haru Campus'])
+  const [windowInfo, setWindowInfo] = useState({ isOpen: true, reason: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -33,6 +34,18 @@ const StudentRegister = () => {
       .then((data) => {
         if (data?.campuses && data.campuses.length > 0) {
           setCampuses(data.campuses.map((c) => c.name))
+        }
+      })
+      .catch(() => {})
+
+    fetch('/api/settings')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.registrationWindow) {
+          setWindowInfo(data.registrationWindow)
+          if (!data.registrationWindow.isOpen) {
+            setError(data.registrationWindow.reason || 'Cost-sharing registration window is currently closed.')
+          }
         }
       })
       .catch(() => {})
@@ -362,11 +375,15 @@ const StudentRegister = () => {
 
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !windowInfo.isOpen}
                 variant="primary"
-                className="w-full mt-3 py-2.5 text-sm font-bold shadow-md"
+                className="w-full mt-3 py-2.5 text-sm font-bold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {loading ? 'Creating Student Profile...' : 'Complete Registration & Access Portal'}
+                {!windowInfo.isOpen
+                  ? 'Registration Window Closed'
+                  : loading
+                  ? 'Creating Student Profile...'
+                  : 'Complete Registration & Access Portal'}
               </Button>
             </form>
 
