@@ -1,0 +1,76 @@
+
+> backend@1.0.0 test:registration
+> node scripts/verify-phase3-registration.mjs
+
+◇ injected env (2) from .env
+
+======================================================
+ PHASE 3 VERIFICATION: REGISTRATION PERIOD, LATE
+ REGISTRATION, CUSTOM FIELDS & STUDENT WORKFLOW
+======================================================
+
+[SECTION 1] Super Admin Authentication & Initial State
+  ✓ PASS: Super Admin logged in successfully with valid JWT
+  ✓ PASS: Campus Dean logged in successfully with valid JWT
+
+[SECTION 2] Registration Schedule Validation & Date Independence
+  ✓ PASS: Server rejects schedule when closing date is earlier than opening date (400)
+
+[SECTION 3] Pre-Opening Window Enforcement (Registration Before Start Date)
+  ✓ PASS: Set future registration schedule window successfully
+  ✓ PASS: Registration window correctly reports CLOSED before start date
+  ✓ PASS: Self-registration rejected before opening date with 403 Forbidden
+
+[SECTION 4] Post-Closing Window Enforcement (Registration After End Date)
+  ✓ PASS: Set expired registration window schedule successfully
+  ✓ PASS: Registration window correctly reports CLOSED after end date
+  ✓ PASS: Direct API registration after closing date rejected with 403 Forbidden
+
+[SECTION 5] Late Registration Control & Audit Trail
+  ✓ PASS: Super Admin successfully enabled Late Registration
+  ✓ PASS: Window is OPEN when Late Registration is enabled (despite expired date)
+  ✓ PASS: Window status flags isLate=true
+  ✓ PASS: Schedule audit log contains "enable_late_registration" entry
+  ✓ PASS: Audit entry correctly recorded performer: "admin"
+  ✓ PASS: Student successfully registered under authorized Late Registration window (201)
+
+[SECTION 6] Standard Active Registration Window Normalization
+  ✓ PASS: Restored active registration window
+  ✓ PASS: Existing registered student logs in and accesses portal seamlessly
+
+[SECTION 7] Custom Registration Fields Creation & Applicability Scoping
+  ✓ PASS: Created universal custom field (appliesTo: all)
+  ✓ PASS: Created cafe-only custom field (appliesTo: cafe)
+  ✓ PASS: Created non-cafe custom field (appliesTo: non-cafe)
+
+[SECTION 8] Custom Fields Scoped Filtering Query Verification
+  ✓ PASS: GET /api/custom-fields?category=cafe includes cafe-specific field and excludes non-cafe field
+  ✓ PASS: GET /api/custom-fields?category=non-cafe includes non-cafe field and excludes cafe field
+
+[SECTION 9] Student Registration Custom Field Validation & Persistence
+  ✓ PASS: Non-cafe registration without mandatory non-cafe custom field rejected with 400 Bad Request
+  ✓ PASS: Non-cafe student registration with valid custom values accepted (200 OK)
+
+[SECTION 10] Custom Field Submissions Inspection Endpoint
+  ✓ PASS: Super Admin fetched field submissions successfully (200 OK)
+  ✓ PASS: Submissions count for field is >= 1 (count: 1)
+  ✓ PASS: Submission correctly records student's answer: "1000123456789"
+
+[SECTION 11] Custom Field Deactivation & Historical Data Preservation
+  ✓ PASS: Deactivated custom field successfully
+  ✓ PASS: Historical answer preserved in student_custom_value despite field deactivation
+  ✓ PASS: Deletion blocked with 409 Conflict when field contains existing student responses
+
+[SECTION 12] Two-Tier Review & Approval Workflow
+  ✓ PASS: Campus Dean submitted verification review (status -> super-admin-review)
+  ✓ PASS: Application status correctly advanced to "super-admin-review"
+  ✓ PASS: Super Admin granted final approval (200 OK)
+  ✓ PASS: Application status set to "approved"
+
+[SECTION 13] Duplicate Student Registration Prevention
+  ✓ PASS: Duplicate registration attempt with same student ID rejected with 409 Conflict
+
+======================================================
+ RESULTS: 35 PASSED, 0 FAILED
+======================================================
+

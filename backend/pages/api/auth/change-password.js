@@ -56,7 +56,7 @@ export default async function handler(req, res) {
       // Hash and update new password
       const newHash = await hashPassword(nextPw)
       await client.query(
-        'UPDATE app_user SET password_hash = $1, alt_password_hash = NULL, updated_at = NOW() WHERE id = $2',
+        'UPDATE app_user SET password_hash = $1, alt_password_hash = NULL, must_change_password = false, updated_at = NOW() WHERE id = $2',
         [newHash, user.id]
       )
 

@@ -224,24 +224,31 @@ async function run() {
   }, adminToken)
   assert(demoteAdminAttempt.status === 403, 'Super Admin account CANNOT be demoted (HTTP 403 Forbidden)')
 
-  // TEST SUITE 7: Safe Cascade Deletion of Managed Accounts
-  console.log('\nTEST SUITE 7: Safe Cascade Deletion of Managed Accounts')
-  // Delete test student
+  // TEST SUITE 7: Protected Account Deletion (Phase 1 spec)
+  console.log('\nTEST SUITE 7: Protected Account Deletion (Phase 1 spec)')
+  // Students are protected from individual deletion
   const deleteStudentRes = await apiRequest(`/api/users?id=${testStudentId}`, 'DELETE', null, adminToken)
-  assert(deleteStudentRes.ok, `Super Admin deletes test student ${testStudentId} (HTTP 200)`)
+  assert(deleteStudentRes.status === 403, `Individual student deletion is FORBIDDEN (HTTP 403) — ${testStudentId}`)
 
-  const verifyStudentGone = await client.query('SELECT id FROM student WHERE student_id = $1', [testStudentId])
-  assert(verifyStudentGone.rows.length === 0, 'Deleted student removed from PostgreSQL student table')
+  const verifyStudentStillExists = await client.query('SELECT id FROM student WHERE student_id = $1', [testStudentId])
+  assert(verifyStudentStillExists.rows.length === 1, 'Student record preserved in PostgreSQL after blocked deletion')
 
-  const verifyStudentUserGone = await client.query('SELECT id FROM app_user WHERE LOWER(username) = LOWER($1)', [testStudentId])
-  assert(verifyStudentUserGone.rows.length === 0, 'Deleted student removed from PostgreSQL app_user table')
+  const verifyStudentUserStillExists = await client.query('SELECT id FROM app_user WHERE LOWER(username) = LOWER($1)', [testStudentId])
+  assert(verifyStudentUserStillExists.rows.length === 1, 'Student login account preserved in app_user after blocked deletion')
 
-  // Delete test dean
+  // Campus Dean accounts are protected from deletion
   const deleteDeanRes = await apiRequest(`/api/users?id=${createdDeanId}`, 'DELETE', null, adminToken)
-  assert(deleteDeanRes.ok, 'Super Admin deletes test dean (HTTP 200)')
+  assert(deleteDeanRes.status === 403, 'Individual Campus Dean deletion is FORBIDDEN (HTTP 403)')
 
-  const verifyDeanGone = await client.query('SELECT id FROM app_user WHERE id = $1', [createdDeanId])
-  assert(verifyDeanGone.rows.length === 0, 'Deleted dean removed from PostgreSQL app_user table')
+  const verifyDeanStillExists = await client.query('SELECT id FROM app_user WHERE id = $1', [createdDeanId])
+  assert(verifyDeanStillExists.rows.length === 1, 'Campus Dean record preserved in PostgreSQL after blocked deletion')
+
+  // Test-data cleanup performed directly (not via the protected API)
+  await client.query('DELETE FROM student_custom_value WHERE student_id = $1', [testStudentId])
+  await client.query('DELETE FROM document_metadata WHERE student_id = $1', [testStudentId])
+  await client.query('DELETE FROM student WHERE student_id = $1', [testStudentId])
+  await client.query('DELETE FROM app_user WHERE LOWER(username) = LOWER($1)', [testStudentId])
+  await client.query("UPDATE app_user SET status = 'inactive', updated_at = NOW() WHERE id = $1", [createdDeanId])
 
   console.log('\n======================================================================')
   console.log(`TOTAL TESTS: ${passed + failed} | PASSED: ${passed} | FAILED: ${failed}`)

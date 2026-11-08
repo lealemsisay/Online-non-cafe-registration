@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     }
 
     // Build query conditions
-    const conditions = ['1=1']
+    const conditions = ['COALESCE(s.is_archived, false) = false']
     const queryParams = []
 
     if (effectiveCampus) {

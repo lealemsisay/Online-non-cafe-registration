@@ -1,0 +1,61 @@
+
+> backend@1.0.0 test:phase3
+> node scripts/verify-phase3-flows.mjs
+
+◇ injected env (2) from .env
+======================================================================
+       DILLA UNIVERSITY - PHASE 3 COMPREHENSIVE VERIFICATION          
+======================================================================
+
+  ✓ Super Admin authenticated successfully
+  ✓ Campus Dean (Main Campus) authenticated successfully
+
+TEST SUITE 1: Reports API & Dynamic Data Aggregation
+  ✓ Super Admin can fetch reports data (HTTP 200)
+  ✓ Pagination page = 1
+  ✓ Students list returned as array
+  ✓ Pagination limit respected (<= 5 records)
+  ✓ Metrics total is accurate number (100)
+  ✓ Campuses list available (Eldoret Campus, Kakamega Campus, Main Campus)
+  ✓ Departments list available (6 depts)
+  ✓ Reports search by department/name succeeds (HTTP 200)
+  ✓ Filtered report results accurately match search criteria
+
+TEST SUITE 2: Campus Dean Campus Scoping on Reports
+  ✓ Campus Dean can fetch campus report records (HTTP 200)
+  ✓ All report records returned to Dean belong to 'Main Campus'
+  ✓ Campus Dean requesting reports for foreign campus is FORBIDDEN (HTTP 403)
+
+TEST SUITE 3: CSV Report Export with Unicode & Quotes
+  ✓ CSV export endpoint responds successfully (HTTP 200)
+  ✓ Content-Type is text/csv
+  ✓ Content-Disposition specifies .csv attachment
+  ✓ CSV buffer starts with UTF-8 Byte Order Mark (0xEF, 0xBB, 0xBF) for Excel compatibility
+  ✓ CSV contains standard required headers
+  ✓ CSV contains multiple rows (length = 18608 bytes)
+  ✓ Dean exporting CSV for another campus is strictly FORBIDDEN (HTTP 403)
+
+TEST SUITE 4: Excel (.xlsx) Report Export
+  ✓ Excel .xlsx export endpoint responds successfully (HTTP 200)
+  ✓ Content-Type is application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+  ✓ Exported .xlsx file has valid OpenXML ZIP signature (PK\x03\x04)
+  ✓ Exported .xlsx file has valid size (74264 bytes)
+
+TEST SUITE 5: Report Generation History Tracking
+  ✓ Can retrieve report generation history (HTTP 200)
+  ✓ Report history is an array
+  ✓ History contains 20 logged report generations
+  ✓ Latest report creator accurately recorded as admin
+  ✓ Report parameters logged in PostgreSQL as JSON
+  ✓ File format accurately recorded (xlsx)
+
+TEST SUITE 6: Campus Dean Student Management & Password Reset
+  ✓ Dean can query student directory (HTTP 200)
+  ✓ Target student located for Dean: DUC-TEST-7753
+  ✓ Campus Dean can reset student password (HTTP 200)
+  ✓ Password successfully updated
+  ✓ Student can log in with dean-reset password (HTTP 200)
+
+======================================================================
+PHASE 3 TESTS COMPLETED: TOTAL: 36 | PASSED: 36 | FAILED: 0
+======================================================================

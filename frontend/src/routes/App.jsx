@@ -26,6 +26,7 @@ import Settings from '@/pages/super-admin/Settings'
 // Auth pages
 import LoginPage from '@/pages/auth/Login'
 import StudentRegister from '@/pages/auth/StudentRegister'
+import ChangePasswordPage from '@/pages/auth/ChangePasswordPage'
 
 // Profile page
 import ProfilePage from '@/pages/profile/ProfilePage'
@@ -42,13 +43,15 @@ const ProtectedRoute = ({ role, children }) => {
     if (!user.role || !user.token) {
       clearAuthStorage()
       navigate('/login?session=expired', { replace: true })
+    } else if (user.mustChangePassword && user.role === 'student') {
+      navigate('/change-password', { replace: true })
     } else if (user.role !== role) {
       if (user.role === 'admin' || user.role === 'viceDean') navigate('/admin', { replace: true })
       else if (user.role === 'dean') navigate('/dean', { replace: true })
       else if (user.role === 'student') navigate('/', { replace: true })
       else navigate('/login', { replace: true })
     }
-  }, [user.role, user.token, role, navigate])
+  }, [user.role, user.token, user.mustChangePassword, role, navigate])
 
   if (!user.role || !user.token || user.role !== role) {
     return null
@@ -143,6 +146,14 @@ const App = () => {
             element={
               <PublicRoute>
                 <StudentRegister />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/change-password"
+            element={
+              <PublicRoute>
+                <ChangePasswordPage />
               </PublicRoute>
             }
           />

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Input, Button } from '@/components/forms'
 import Icon from '@/components/icons/Icon'
 import RegistrationFormBuilder from '@/components/settings/RegistrationFormBuilder'
+import { DepartmentManagement, AcademicYearManagement } from '@/components/settings/AcademicConfiguration'
+import { PhotoRequirementsPanel, RegistrationPoliciesPanel } from '@/components/settings/PhotoAndPolicySettings'
 
 const Settings = () => {
   // Navigation Tabs: 'builder', 'photo', 'academic', 'schedule', 'governance'
@@ -198,6 +200,21 @@ const Settings = () => {
       setError('Network error saving photo limit.')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  // Lightweight refresh of the academic lists used by other tabs (no full-page reload).
+  const refreshAcademicLists = async () => {
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/settings', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.academicYears) setAcademicYears(data.academicYears)
+        if (data.departments) setDepartments(data.departments)
+      }
+    } catch {
+      // non-critical
     }
   }
 
@@ -551,67 +568,22 @@ const Settings = () => {
               <ul className="list-disc list-inside space-y-1 text-slate-600">
                 <li>Existing student photos remain completely accessible when this limit is adjusted.</li>
                 <li>Backend inspects true binary magic bytes (JPEG: FF D8 FF, PNG: 89 50 4E 47).</li>
-                <li>Aspect ratio is strictly enforced at 3:4 passport presentation without distortion.</li>
+                <li>Allowed formats, aspect ratio and pixel dimensions can be enforced in the Photo Requirements card below, and are verified again on the server.</li>
                 <li>Non-admins attempting to change this limit receive HTTP 403 Forbidden.</li>
               </ul>
             </div>
           </div>
+
+          <PhotoRequirementsPanel />
         </div>
       )}
 
       {/* TAB 3: ACADEMIC CONFIGURATION (DEPARTMENTS, BATCHES, PROGRAMS, YEARS) */}
       {activeTab === 'academic' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5">
-            <div className="pb-3 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <Icon name="book-open" className="w-5 h-5 text-dillaGreen" />
-                <h2 className="text-lg font-bold text-dillaDarkGreen">
-                  Academic Disciplines & Department Management
-                </h2>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Manage departments selectable on student registration forms without editing code.
-              </p>
-            </div>
+          <DepartmentManagement campuses={campuses} onChanged={refreshAcademicLists} />
 
-            <div className="flex gap-2 max-w-md">
-              <Input
-                placeholder="e.g. Software Engineering"
-                value={newDepartment}
-                onChange={(e) => setNewDepartment(e.target.value)}
-                className="text-slate-900 text-xs h-9"
-              />
-              <Button
-                onClick={handleAddDepartment}
-                disabled={isSaving}
-                variant="primary"
-                className="text-xs px-4 py-2 font-bold flex-shrink-0"
-              >
-                Add Dept
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 pt-2">
-              {departments.map((dept) => (
-                <span
-                  key={dept}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs rounded-lg transition-colors"
-                >
-                  <span>{dept}</span>
-                  <button
-                    onClick={() => handleRemoveDepartment(dept)}
-                    className="text-slate-400 hover:text-rose-600 font-bold ml-1"
-                    title={`Remove ${dept}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             {/* Batches Management */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
               <div className="pb-3 border-b border-slate-200">
@@ -658,49 +630,9 @@ const Settings = () => {
                 ))}
               </div>
             </div>
-
-            {/* Academic Years Calendar */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
-              <div className="pb-3 border-b border-slate-200">
-                <h3 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider flex items-center gap-1.5">
-                  <Icon name="clock" className="w-4 h-4 text-dillaGreen" />
-                  Academic Calendar Years
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Active academic years in PostgreSQL
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g. 2025/2026"
-                  value={newAcademicYear}
-                  onChange={(e) => setNewAcademicYear(e.target.value)}
-                  className="text-slate-900 text-xs h-9"
-                />
-                <Button
-                  onClick={handleAddAcademicYear}
-                  disabled={isSaving}
-                  variant="primary"
-                  className="text-xs px-3 font-bold flex-shrink-0"
-                >
-                  Add Year
-                </Button>
-              </div>
-
-              <div className="flex flex-wrap gap-1.5 pt-2">
-                {academicYears.map((y) => (
-                  <span
-                    key={y}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 border border-slate-300 text-slate-800 font-bold text-xs rounded-lg"
-                  >
-                    <Icon name="check" className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{y}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
           </div>
+
+          <AcademicYearManagement onChanged={refreshAcademicLists} />
         </div>
       )}
 
@@ -834,6 +766,8 @@ const Settings = () => {
             </div>
           </div>
 
+          <RegistrationPoliciesPanel />
+
           {/* Audit History of Schedule Changes */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center justify-between pb-4 border-b border-slate-200">
@@ -877,6 +811,8 @@ const Settings = () => {
                         enable_late_registration: 'Late Registration Enabled',
                         disable_late_registration: 'Late Registration Disabled',
                         toggle_late_registration: 'Late Registration Toggled',
+                        update_registration_policies: 'Registration Policy Updated',
+                        update_photo_settings: 'Photo Requirements Updated',
                       }
 
                       return (
@@ -902,7 +838,7 @@ const Settings = () => {
                           </td>
                           <td className="py-2.5 px-3 text-slate-600 max-w-md">
                             <div className="font-medium text-slate-900">
-                              {parsedDetails?.reason || parsedDetails?.raw || 'Schedule update'}
+                              {parsedDetails?.reason || parsedDetails?.raw || (item.action === 'update_registration_policies' ? 'Registration policy or applicable academic year updated' : item.action === 'update_photo_settings' ? 'Photo requirements updated' : 'Schedule update')}
                             </div>
                             {parsedDetails?.startDate && (
                               <div className="text-[10px] text-slate-500 font-mono mt-0.5">

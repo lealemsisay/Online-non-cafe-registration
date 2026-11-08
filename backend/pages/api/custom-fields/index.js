@@ -209,54 +209,54 @@ export default async function handler(req, res) {
         })
       }
 
-      const insertRes = await client.query(
+const insertRes = await client.query(
         `INSERT INTO custom_field_definition (
            field_key, label, field_type, options, is_required, is_active, applies_to,
-           placeholder, help_text, is_student_editable, visible_student, visible_admin, visible_dean, 
-           display_order, validation_rules, campus, created_by, created_at, updated_at
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
-         RETURNING 
-           id, 
-           field_key AS "fieldKey", 
-           label, 
-           field_type AS "fieldType", 
-           options, 
-           is_required AS "isRequired", 
-           is_active AS "isActive", 
-           COALESCE(applies_to, 'all') AS "appliesTo",
-           placeholder,
-           help_text AS "helpText",
-           is_student_editable AS "isStudentEditable",
-           visible_student AS "visibleStudent",
-           visible_admin AS "visibleAdmin",
-           visible_dean AS "visibleDean",
-           display_order AS "displayOrder",
-           validation_rules AS "validationRules",
-           campus, 
-           created_by AS "createdBy", 
-           created_at AS "createdAt", 
-           updated_at AS "updatedAt"`,
-        [
-          cleanFieldKey,
-          cleanLabel,
-          fieldType,
-          JSON.stringify(parsedOptions),
-          isRequired === true,
-          isActive !== false,
-          cleanAppliesTo,
-          placeholder ? String(placeholder).trim() : null,
-          helpText ? String(helpText).trim() : null,
-          isStudentEditable !== false,
-          visibleStudent !== false,
-          visibleAdmin !== false,
-          visibleDean !== false,
-          parseInt(displayOrder) || 0,
-          JSON.stringify(validationRules || {}),
-          targetCampus,
-          user.username || user.name || 'user',
-        ]
-      )
+            placeholder, help_text, is_student_editable, visible_student, visible_admin, visible_dean, 
+            display_order, validation_rules, campus, created_by, created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+          RETURNING 
+            id, 
+            field_key AS "fieldKey", 
+            label, 
+            field_type AS "fieldType", 
+            options, 
+            is_required AS "isRequired", 
+            is_active AS "isActive", 
+            COALESCE(applies_to, 'all') AS "appliesTo",
+            placeholder,
+            help_text AS "helpText",
+            is_student_editable AS "isStudentEditable",
+            visible_student AS "visibleStudent",
+            visible_admin AS "visibleAdmin",
+            visible_dean AS "visibleDean",
+            display_order AS "displayOrder",
+            validation_rules AS "validationRules",
+            campus, 
+            created_by AS "createdBy", 
+            created_at AS "createdAt", 
+            updated_at AS "updatedAt"`,
+         [
+           cleanFieldKey,
+           cleanLabel,
+           fieldType,
+           JSON.stringify(parsedOptions),
+           isRequired === true,
+           isActive !== false,
+           cleanAppliesTo,
+           placeholder ? String(placeholder).trim() : null,
+           helpText ? String(helpText).trim() : null,
+           isStudentEditable !== false,
+           visibleStudent !== false,
+           visibleAdmin !== false,
+           visibleDean !== false,
+           parseInt(displayOrder) || 0,
+           JSON.stringify(validationRules || {}),
+           targetCampus,
+           user.username || user.name || 'user',
+         ]
+       )
 
       const newField = insertRes.rows[0]
 
@@ -267,6 +267,20 @@ export default async function handler(req, res) {
             campus: targetCampus,
             title: 'New Campus Custom Field Defined',
             message: `Campus Dean ${user.username || user.name} created a new custom field "${cleanLabel}" (${cleanFieldKey}) for ${targetCampus}.`,
+            type: 'info',
+            link: '/admin/settings',
+          },
+          client
+        )
+      }
+
+      if (userRole === 'admin') {
+        await createNotification(
+          {
+            recipientRole: 'admin',
+            campus: targetCampus || null,
+            title: 'New System Custom Field Defined',
+            message: `Admin ${user.username || user.name} created a new custom field "${cleanLabel}" (${cleanFieldKey}) for ${targetCampus || 'all campuses'}.`,
             type: 'info',
             link: '/admin/settings',
           },
@@ -354,7 +368,7 @@ export default async function handler(req, res) {
         cleanAppliesTo = ['cafe', 'non-cafe'].includes(val) ? val : 'all'
       }
 
-      const updateRes = await client.query(
+const updateRes = await client.query(
         `UPDATE custom_field_definition
          SET label = COALESCE($1, label),
              field_type = COALESCE($2, field_type),
@@ -393,24 +407,38 @@ export default async function handler(req, res) {
            created_by AS "createdBy", 
            created_at AS "createdAt", 
            updated_at AS "updatedAt"`,
-        [
-          label ? label.trim() : null,
-          fieldType || null,
-          parsedOptions ? JSON.stringify(parsedOptions) : null,
-          isRequired !== undefined ? Boolean(isRequired) : null,
-          isActive !== undefined ? Boolean(isActive) : null,
-          placeholder !== undefined ? placeholder : null,
-          helpText !== undefined ? helpText : null,
-          isStudentEditable !== undefined ? Boolean(isStudentEditable) : null,
-          visibleStudent !== undefined ? Boolean(visibleStudent) : null,
-          visibleAdmin !== undefined ? Boolean(visibleAdmin) : null,
-          visibleDean !== undefined ? Boolean(visibleDean) : null,
-          displayOrder !== undefined ? parseInt(displayOrder) : null,
-          validationRules ? JSON.stringify(validationRules) : null,
-          cleanAppliesTo,
-          id,
-        ]
-      )
+         [
+           label ? label.trim() : null,
+           fieldType || null,
+           parsedOptions ? JSON.stringify(parsedOptions) : null,
+           isRequired !== undefined ? Boolean(isRequired) : null,
+           isActive !== undefined ? Boolean(isActive) : null,
+           placeholder !== undefined ? placeholder : null,
+           helpText !== undefined ? helpText : null,
+           isStudentEditable !== undefined ? Boolean(isStudentEditable) : null,
+           visibleStudent !== undefined ? Boolean(visibleStudent) : null,
+           visibleAdmin !== undefined ? Boolean(visibleAdmin) : null,
+           visibleDean !== undefined ? Boolean(visibleDean) : null,
+           displayOrder !== undefined ? parseInt(displayOrder) : null,
+           validationRules ? JSON.stringify(validationRules) : null,
+           cleanAppliesTo,
+           id,
+         ]
+       )
+
+      if (userRole === 'admin') {
+        await createNotification(
+          {
+            recipientRole: 'admin',
+            campus: existing.campus || null,
+            title: 'Custom Field Updated',
+            message: `Admin ${user.username || user.name} updated custom field "${existing.label}" (${existing.field_key}).`,
+            type: 'info',
+            link: '/admin/settings',
+          },
+          client
+        )
+      }
 
       return res.status(200).json({ success: true, customField: updateRes.rows[0] })
     } catch (error) {

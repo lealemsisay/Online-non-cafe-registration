@@ -1,6 +1,7 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders } from '@/lib/auth'
 import { checkRegistrationWindow } from '@/lib/schedule'
+import { getPhotoSettings } from '@/lib/photo-settings'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
@@ -13,13 +14,21 @@ export default async function handler(req, res) {
   const auth = authorize(req, ['student', 'dean', 'admin'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
-  // Enforce registration schedule window in backend
-  const windowCheck = await checkRegistrationWindow()
-  if (!windowCheck.isOpen) {
-    return res.status(403).json({
-      message: windowCheck.reason || 'Cost-sharing registration window is currently closed.',
-      schedule: windowCheck.schedule,
+  // Enforce the registration window (opening/closing dates, manual close, late registration,
+  // Cafe / Non-Cafe policy) on the backend. Administrators and Deans are exempt so they can
+  // still correct records outside the student window.
+  const isStudentUser = auth.user.role === 'student'
+  let windowCheck = null
+  if (isStudentUser) {
+    windowCheck = await checkRegistrationWindow(null, {
+      category: req.body?.isNonCafeteria === true ? 'non-cafe' : 'cafe',
     })
+    if (!windowCheck.isOpen) {
+      return res.status(403).json({
+        message: windowCheck.reason || 'Cost-sharing registration window is currently closed.',
+        schedule: windowCheck.schedule,
+      })
+    }
   }
 
   try {
@@ -41,13 +50,27 @@ export default async function handler(req, res) {
     } = body
 
     const effectiveGender = gender || 'Male'
-    if (!studentId || !fullName || !campus || !department || !program || !academicYear) {
+    // Students are always registered for the applicable academic year configured by the Super Admin.
+    const effectiveAcademicYear = (windowCheck && windowCheck.academicYear) || academicYear
+    if (!studentId || !fullName || !campus || !department || !program || !effectiveAcademicYear) {
       return res.status(400).json({ message: 'Missing required fields' })
     }
 
     const client = await pool.connect()
     try {
       const existing = await client.query('SELECT student_id, photo_url FROM student WHERE student_id = $1', [studentId])
+
+      // Passport photo may be configured as required by the Super Admin
+      if (isStudentUser) {
+        const photoSettings = await getPhotoSettings(client)
+        const hasPhoto = Boolean(photoUrl || (existing.rows[0] && existing.rows[0].photo_url))
+        if (photoSettings.required && !hasPhoto) {
+          return res.status(400).json({
+            message: 'A passport photo is required to complete registration.',
+            fieldKey: 'photoUrl',
+          })
+        }
+      }
 
       let savedStudent
       if (existing.rows.length > 0) {
@@ -58,7 +81,7 @@ export default async function handler(req, res) {
            SET full_name = $1, gender = $2, campus = $3, department = $4, program = $5, year_of_study = $6, phone = $7, email = $8, academic_year = $9, is_non_cafeteria = $10, photo_url = COALESCE($11, photo_url), registration_status = 'submitted', application_status = 'submitted', updated_at = NOW()
            WHERE student_id = $12
            RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus"`,
-          [fullName, gender, campus, department, program, yearOfStudy || '1', phone || '', email || '', academicYear, isNonCafeteria === true, finalPhotoUrl, studentId]
+          [fullName, effectiveGender, campus, department, program, yearOfStudy || '1', phone || '', email || '', effectiveAcademicYear, isNonCafeteria === true, finalPhotoUrl, studentId]
         )
         savedStudent = updateRes.rows[0]
       } else {
@@ -66,7 +89,7 @@ export default async function handler(req, res) {
           `INSERT INTO student (student_id, full_name, gender, campus, department, program, year_of_study, phone, email, photo_url, academic_year, is_non_cafeteria, registration_status, application_status)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'submitted', 'submitted')
            RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus"`,
-          [studentId, fullName, gender, campus, department, program, yearOfStudy || '1', phone || '', email || '', photoUrl || null, academicYear, isNonCafeteria === true]
+          [studentId, fullName, effectiveGender, campus, department, program, yearOfStudy || '1', phone || '', email || '', photoUrl || null, effectiveAcademicYear, isNonCafeteria === true]
         )
         savedStudent = result.rows[0]
       }

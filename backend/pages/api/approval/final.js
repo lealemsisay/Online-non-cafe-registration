@@ -1,5 +1,6 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
@@ -56,6 +57,27 @@ export default async function handler(req, res) {
          VALUES ('super_admin_approval', $1, $2, 'application', $3)`,
         [auth.user.name || 'super-admin', applicationId, `Super Admin ${decision}: ${comments || ''}`]
       )
+
+      // Notify the student when application is returned for correction
+      if (normalizedDecision === 'return-for-correction') {
+        try {
+          await createNotification(
+            {
+              recipientId: updatedApplication.id || updatedApplication.studentId,
+              recipientRole: 'student',
+              campus: updatedApplication.campus,
+              title: 'Application Returned for Correction',
+              message: `Your application has been returned for correction. Reviewer comments: ${comments || ''}`,
+              type: 'warning',
+              link: '/student/profile',
+            },
+            client
+          )
+        } catch (e) {
+          // Continue even if notification fails - the application status update is primary
+          console.error('Failed to create return notification:', e)
+        }
+      }
 
       return res.status(200).json({
         success: true,

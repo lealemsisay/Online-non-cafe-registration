@@ -1,5 +1,6 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders } from '@/lib/auth'
+import { getPhotoSettings, validatePhotoBuffer, describeFormats } from '@/lib/photo-settings'
 import fs from 'fs'
 import path from 'path'
 
@@ -36,13 +37,23 @@ export default async function handler(req, res) {
 
       if (fs.existsSync(filePath)) {
         const ext = path.extname(safeFilename).toLowerCase()
-        const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg'
+        const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
+        res.setHeader('X-Content-Type-Options', 'nosniff')
         res.setHeader('Content-Type', mimeType)
         res.setHeader('Cache-Control', 'public, max-age=86400')
         const fileStream = fs.createReadStream(filePath)
         return fileStream.pipe(res)
       } else {
         return res.status(404).json({ message: 'Photo not found' })
+      }
+    }
+
+    if (req.query?.settings === 'true') {
+      const settingsClient = await pool.connect()
+      try {
+        return res.status(200).json({ photoSettings: await getPhotoSettings(settingsClient) })
+      } finally {
+        settingsClient.release()
       }
     }
 
@@ -70,22 +81,8 @@ export default async function handler(req, res) {
 
     const client = await pool.connect()
     try {
-      // 1. Fetch current admin-configured photo upload size limit from DB
-      let maxPhotoSizeMB = 8 // default 8 MB
-      try {
-        const settingRes = await client.query(
-          "SELECT value FROM system_setting WHERE key = 'max_photo_size_mb' OR key = 'maxPhotoSizeMB'"
-        )
-        if (settingRes.rows.length > 0) {
-          const rawVal = JSON.parse(settingRes.rows[0].value)
-          const parsed = Number(rawVal)
-          if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) {
-            maxPhotoSizeMB = parsed
-          }
-        }
-      } catch (e) {
-        // Fallback to default
-      }
+      // 1. Load the admin-configured photo settings (size, formats, dimensions, aspect ratio)
+      const photoSettings = await getPhotoSettings(client)
 
       const body = req.body || {}
       const { image, studentId, targetUserId } = body
@@ -131,48 +128,32 @@ export default async function handler(req, res) {
         base64Data = parts[1]
       }
 
-      // Validate declared MIME
-      const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png']
-      if (!allowedMimes.includes(declaredMime)) {
+      // Validate declared MIME against the allowed formats
+      const mimeToFormat = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
+      const declaredFormat = mimeToFormat[declaredMime]
+      if (!declaredFormat || !photoSettings.allowedFormats.includes(declaredFormat)) {
         return res.status(400).json({
-          message: 'Unsupported image format. Only JPG, JPEG, and PNG images are permitted.',
+          message: `Unsupported image format. Allowed formats: ${describeFormats(photoSettings.allowedFormats)}.`,
         })
       }
 
       const buffer = Buffer.from(base64Data, 'base64')
-      const sizeInMB = buffer.length / (1024 * 1024)
 
-      // 4. Enforce configured max file size
-      if (sizeInMB > maxPhotoSizeMB) {
+      // 4-5. Deep inspection of the real file content: size, real format (magic bytes),
+      // pixel dimensions and aspect ratio, against the configured limits.
+      const check = validatePhotoBuffer(buffer, photoSettings)
+      if (!check.ok) {
+        return res.status(400).json({ message: check.error, ...(check.details || {}) })
+      }
+      if (check.info.format !== declaredFormat) {
         return res.status(400).json({
-          message: `Photo file size (${sizeInMB.toFixed(2)} MB) exceeds the configured limit of ${maxPhotoSizeMB} MB.`,
-          maxAllowedMB: maxPhotoSizeMB,
-          currentSizeMB: Number(sizeInMB.toFixed(2)),
+          message: 'The file content does not match its declared image type.',
         })
       }
+      const sizeInMB = check.details.sizeMB
+      const maxPhotoSizeMB = check.details.maxAllowedMB
 
-      // 5. Validate actual image content via magic bytes (Deep inspection)
-      // JPEG starts with FF D8 FF
-      const isJpeg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
-      // PNG starts with 89 50 4E 47 0D 0A 1A 0A
-      const isPng =
-        buffer.length > 8 &&
-        buffer[0] === 0x89 &&
-        buffer[1] === 0x50 &&
-        buffer[2] === 0x4e &&
-        buffer[3] === 0x47 &&
-        buffer[4] === 0x0d &&
-        buffer[5] === 0x0a &&
-        buffer[6] === 0x1a &&
-        buffer[7] === 0x0a
-
-      if (!isJpeg && !isPng) {
-        return res.status(400).json({
-          message: 'Invalid image content. The uploaded file does not contain genuine JPG, JPEG, or PNG image data.',
-        })
-      }
-
-      const ext = isPng ? '.png' : '.jpg'
+      const ext = check.info.format === 'png' ? '.png' : check.info.format === 'webp' ? '.webp' : '.jpg'
       const cleanTarget = targetId.replace(/[^a-zA-Z0-9_-]/g, '_')
       const fileName = `photo-${cleanTarget}-${Date.now()}${ext}`
       const filePath = path.join(photoDir, fileName)
@@ -197,7 +178,9 @@ export default async function handler(req, res) {
         success: true,
         photoUrl,
         filename: fileName,
-        sizeInMB: Number(sizeInMB.toFixed(2)),
+        sizeInMB,
+        width: check.info.width,
+        height: check.info.height,
         maxAllowedMB: maxPhotoSizeMB,
         message: 'Student passport photo uploaded and securely verified successfully.',
       })

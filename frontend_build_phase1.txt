@@ -1,0 +1,59 @@
+
+> frontend@1.0.0 build
+> vite build
+
+[36mvite v8.3.4 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 1969 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.01 kB │ gzip:   0.55 kB
+dist/assets/index-CyqZDjA_.css   43.50 kB │ gzip:   8.48 kB
+dist/assets/index-B-pjAEWZ.js   697.68 kB │ gzip: 162.93 kB
+
+[33m[33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "node_modules/react-router/dist/development/index.mjs" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/react-router/dist/development/index.mjs:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m "use client";
+ [38;5;240m   │[0m ──────┬──────  
+ [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+[39m
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[33m[33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "node_modules/react-router/dist/development/dom-export.mjs" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/react-router/dist/development/dom-export.mjs:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m "use client";
+ [38;5;240m   │[0m ──────┬──────  
+ [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+[39m
+[33m[33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "node_modules/lucide-react/dist/esm/context.mjs" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/lucide-react/dist/esm/context.mjs:2:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m2 │[0m "use client";
+ [38;5;240m  │[0m ──────┬──────  
+ [38;5;240m  │[0m       ╰──────── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+[39m
+[33m[33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "node_modules/lucide-react/dist/esm/Icon.mjs" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/lucide-react/dist/esm/Icon.mjs:2:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m2 │[0m "use client";
+ [38;5;240m  │[0m ──────┬──────  
+ [38;5;240m  │[0m       ╰──────── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+[39m
+[32m✓ built in 1.88s[39m

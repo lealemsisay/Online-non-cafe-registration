@@ -39,6 +39,7 @@ async function run() {
       campus text,
       email text,
       status text NOT NULL DEFAULT 'active',
+      must_change_password boolean NOT NULL DEFAULT false,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -47,6 +48,7 @@ async function run() {
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS photo_url text;
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS phone text;
+    ALTER TABLE app_user ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
     ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_role_check;
     ALTER TABLE app_user ADD CONSTRAINT app_user_role_check CHECK (role IN ('student','dean','admin','viceDean'));
 
@@ -88,6 +90,11 @@ async function run() {
     );
 
     ALTER TABLE student ADD COLUMN IF NOT EXISTS photo_url text;
+    ALTER TABLE student ADD COLUMN IF NOT EXISTS registrar_id text;
+    ALTER TABLE student ADD COLUMN IF NOT EXISTS profile_complete boolean NOT NULL DEFAULT false;
+    ALTER TABLE student ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false;
+    ALTER TABLE student ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+    ALTER TABLE student ADD COLUMN IF NOT EXISTS archived_by text;
 
     CREATE TABLE IF NOT EXISTS campus (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -212,6 +219,9 @@ async function run() {
       created_at timestamptz NOT NULL DEFAULT now()
     );
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_student_registrar_id ON student (LOWER(registrar_id)) WHERE registrar_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_student_archived ON student (is_archived);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_field_definition_key ON custom_field_definition(field_key);
     CREATE INDEX IF NOT EXISTS idx_custom_field_def_campus ON custom_field_definition(campus, is_active);
     CREATE INDEX IF NOT EXISTS idx_student_custom_val_student ON student_custom_value(student_id);
     CREATE INDEX IF NOT EXISTS idx_campus_submission_campus ON campus_submission(campus, status);

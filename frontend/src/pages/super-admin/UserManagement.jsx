@@ -6,6 +6,7 @@ import ActionMenu from '@/components/common/ActionMenu'
 import ConfirmModal from '@/components/common/ConfirmModal'
 import StudentDetailModal from '@/components/students/StudentDetailModal'
 import StudentEditModal from '@/components/students/StudentEditModal'
+import ImportStudents from '@/pages/super-admin/components/import-students/ImportStudents'
 
 const UserManagement = () => {
   const [activeTab, setActiveTab] = useState('dean') // 'dean' | 'viceDean' | 'student'
@@ -41,6 +42,18 @@ const UserManagement = () => {
   const [newStudentDept, setNewStudentDept] = useState('Computer Science')
   const [newStudentEmail, setNewStudentEmail] = useState('')
   const [newStudentPassword, setNewStudentPassword] = useState('Student@Dilla2026!')
+
+  // Custom Fields management state
+  const [newFieldKey, setNewFieldKey] = useState('')
+  const [newFieldLabel, setNewFieldLabel] = useState('')
+  const [newFieldType, setNewFieldType] = useState('text')
+  const [newFieldApplicability, setNewFieldApplicability] = useState('both')
+  const [newFieldRequired, setNewFieldRequired] = useState('false')
+  const [newFieldDisplayOrder, setNewFieldDisplayOrder] = useState(0)
+  const [newFieldVisibleStudent, setNewFieldVisibleStudent] = useState(true)
+  const [newFieldVisibleAdmin, setNewFieldVisibleAdmin] = useState(true)
+  const [editingField, setEditingField] = useState(null)
+  const [customFields, setCustomFields] = useState([])
 
   // Modal unified provisioning state
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -87,6 +100,13 @@ const UserManagement = () => {
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false)
+  const [isDeletingAll, setIsDeletingAll] = useState(false)
+  const [activeStudentCount, setActiveStudentCount] = useState(null)
+  const [authenticatedRole, setAuthenticatedRole] = useState(null)
+  const [userCampus, setUserCampus] = useState('Main Campus')
 
   const loadData = async () => {
     setLoading(true)
@@ -94,11 +114,12 @@ const UserManagement = () => {
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
 
     try {
-      const [deanRes, viceDeanRes, studentRes, campusRes] = await Promise.all([
+      const [deanRes, viceDeanRes, studentRes, campusRes, settingsRes] = await Promise.all([
         fetch('/api/users?type=dean', { headers }).then((r) => (r.ok ? r.json() : null)),
         fetch('/api/users?type=viceDean', { headers }).then((r) => (r.ok ? r.json() : null)),
         fetch('/api/users?type=student', { headers }).then((r) => (r.ok ? r.json() : null)),
         fetch('/api/campuses', { headers }).then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/settings', { headers }).then((r) => (r.ok ? r.json() : null)),
       ])
 
       if (deanRes?.deans) setDeans(deanRes.deans)
@@ -106,6 +127,9 @@ const UserManagement = () => {
       if (studentRes?.users) setStudents(studentRes.users)
       if (campusRes?.campuses && campusRes.campuses.length > 0) {
         setCampuses(campusRes.campuses.map((c) => ({ value: c.name, label: c.name })))
+      }
+      if (settingsRes?.systemSettings?.customFields) {
+        setCustomFields(settingsRes.systemSettings.customFields)
       }
     } catch (err) {
       console.error('Error loading user management data:', err)
@@ -116,6 +140,20 @@ const UserManagement = () => {
 
   useEffect(() => {
     loadData()
+  }, [])
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        setAuthenticatedRole(payload.role || null)
+        setUserCampus(payload.campus || 'Main Campus')
+      } catch (e) {
+        setAuthenticatedRole(null)
+        setUserCampus('Main Campus')
+      }
+    }
   }, [])
 
   // Reset page when switching tabs or changing search/filter
@@ -366,6 +404,253 @@ const UserManagement = () => {
     }
   }
 
+  // Custom Fields handlers
+  const handleCreateCustomField = async () => {
+    setError(null)
+    setMessage(null)
+    if (!newFieldKey || !newFieldLabel) {
+      setError('Please provide field key and label.')
+      return
+    }
+
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          customFields: [{
+            field_key: newFieldKey.trim(),
+            label: newFieldLabel.trim(),
+            field_type: newFieldType,
+            applicability: newFieldApplicability,
+            is_required: newFieldRequired === 'true',
+            is_active: true,
+            visible_student: newFieldVisibleStudent,
+            visible_admin: newFieldVisibleAdmin,
+            visible_dean: true,
+            display_order: newFieldDisplayOrder,
+            validation_rules: {},
+          }]
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        setMessage(`Custom field '${newFieldKey}' created successfully!`)
+        setNewFieldKey('')
+        setNewFieldLabel('')
+        setNewFieldType('text')
+        setNewFieldApplicability('both')
+        setNewFieldRequired('false')
+        setNewFieldDisplayOrder(0)
+        setNewFieldVisibleStudent(true)
+        setNewFieldVisibleAdmin(true)
+        loadData()
+      } else {
+        setError(data.message || 'Failed to create custom field')
+      }
+    } catch (e) {
+      setError('Network error creating custom field.')
+    }
+  }
+
+  const handleToggleFieldStatus = async (field) => {
+    setError(null)
+    setMessage(null)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch(`/api/settings/field/${field.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ is_active: !field.is_active }),
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        setMessage(`Custom field '${field.label || field.field_key}' ${field.is_active ? 'deactivated' : 'activated'}.`)
+        loadData()
+      } else {
+        setError(data.message || 'Failed to update custom field status')
+      }
+    } catch (e) {
+      setError('Network error updating custom field status.')
+    }
+  }
+
+  const handleDeleteCustomField = async (fieldId) => {
+    setError(null)
+    setMessage(null)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch(`/api/settings/field/${fieldId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        setMessage('Custom field deleted successfully!')
+        loadData()
+      } else {
+        setError(data.message || 'Failed to delete custom field')
+      }
+    } catch (e) {
+      setError('Network error deleting custom field.')
+    }
+  }
+
+  const openEditModal = (field) => {
+    setEditingField({
+      id: field.id,
+      field_key: field.field_key,
+      label: field.label || '',
+      field_type: field.field_type || 'text',
+      applies_to: field.applies_to || field.applicability || 'all',
+      is_required: Boolean(field.is_required),
+      is_active: field.is_active !== false,
+      visible_student: field.visible_student !== false,
+      visible_admin: field.visible_admin !== false,
+      display_order: field.display_order || 0,
+    })
+  }
+
+  const handleUpdateCustomField = async () => {
+    if (!editingField) return
+    if (!editingField.label.trim()) {
+      setError('Please provide a field label.')
+      return
+    }
+    setError(null)
+    setMessage(null)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch(`/api/settings/field/${editingField.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          label: editingField.label.trim(),
+          field_type: editingField.field_type,
+          applies_to: editingField.applies_to,
+          is_required: Boolean(editingField.is_required),
+          is_active: Boolean(editingField.is_active),
+          visible_student: Boolean(editingField.visible_student),
+          visible_admin: Boolean(editingField.visible_admin),
+          display_order: Number(editingField.display_order) || 0,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMessage(`Custom field '${editingField.label}' updated successfully!`)
+        setEditingField(null)
+        loadData()
+      } else {
+        setError(data.message || 'Failed to update custom field')
+      }
+    } catch (e) {
+      setError('Network error updating custom field.')
+    }
+  }
+
+  const deleteCustomField = async (fieldId) => {
+    if (!window.confirm('Delete this custom field permanently? This cannot be undone.')) return
+    await handleDeleteCustomField(fieldId)
+  }
+
+  const canManageAllStudents = authenticatedRole === 'admin' || authenticatedRole === 'super_admin'
+
+  const handleExportStudents = async (format) => {
+    setError(null)
+    setMessage(null)
+    setIsExporting(true)
+    const token = localStorage.getItem('token')
+    try {
+      const params = new URLSearchParams({ format, reportType: 'student_directory' })
+      if (campusFilter && campusFilter !== 'all') params.set('campus', campusFilter)
+      const res = await fetch(`/api/reports/export?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.message || 'Failed to export students.')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `dilla_students_${new Date().toISOString().slice(0, 10)}.${format}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      setMessage(`Student directory exported as ${format.toUpperCase()}.`)
+    } catch (e) {
+      setError('Network error while exporting students.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const openDeleteAllStudents = async () => {
+    setDeleteAllOpen(true)
+    setActiveStudentCount(null)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/students/delete-all', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setActiveStudentCount(data.activeStudentCount)
+      }
+    } catch {
+      // count is optional
+    }
+  }
+
+  const handleDeleteAllStudents = async () => {
+    setIsDeletingAll(true)
+    setError(null)
+    setMessage(null)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/students/delete-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ confirm: true }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setMessage(data.message || 'All students were archived.')
+        setDeleteAllOpen(false)
+        setActiveStudentCount(null)
+        loadData()
+      } else {
+        setError(data.message || 'Failed to delete all students.')
+      }
+    } catch (e) {
+      setError('Network error while deleting all students.')
+    } finally {
+      setIsDeletingAll(false)
+    }
+  }
+
   // Toggle account status (active <-> inactive)
   const handleToggleStatus = async (user) => {
     setError(null)
@@ -505,6 +790,124 @@ const UserManagement = () => {
     } catch (e) {
       setError('Network error updating user account.')
     }
+  }
+
+  // Determine permitted ActionMenu items based on role hierarchy
+  const getPermittedActionMenuItems = (userRole, target) => {
+    const targetRole = target.role || 'student'
+    const targetStatus = target.status || target.userStatus || 'active'
+    const targetCampus = target.campus || 'Main Campus'
+    const myCampus = userCampus || 'Main Campus'
+    
+    // If we don't have user role, return all items (original behavior)
+    if (!userRole) {
+      return [
+        {
+          label: 'View Details',
+          icon: 'eye',
+          onClick: () => setViewingUser(target),
+        },
+        {
+          label: 'Edit Account',
+          icon: 'edit',
+          onClick: () => setEditingUser(target),
+        },
+        {
+          label: 'Reset Password',
+          icon: 'key',
+          onClick: () => {
+            setResetTargetUser(target)
+            setCustomPassword('')
+          },
+        },
+        {
+          label: targetStatus === 'active' ? 'Deactivate Account' : 'Reactivate Account',
+          icon: targetStatus === 'active' ? 'x-circle' : 'check-circle',
+          className: targetStatus === 'active' ? 'text-amber-700' : 'text-emerald-700',
+          onClick: () => handleToggleStatus(target),
+        },
+        {
+          label: 'Delete',
+          icon: 'trash',
+          className: 'text-rose-700 font-bold',
+          separator: true,
+          onClick: () => setDeleteTarget(target),
+        },
+      ]
+    }
+
+    // Role-based permission filtering
+    const permitted = []
+
+    // View: Always permitted for authenticated users
+    permitted.push({
+      label: 'View Details',
+      icon: 'eye',
+      onClick: () => setViewingUser(target),
+    })
+
+    // Edit: Permitted for Super Admin, Admin, Vice Dean, and Campus Dean (with campus scoping)
+    const canEdit =
+      userRole === 'admin' ||
+      (userRole === 'viceDean' && targetRole !== 'admin') ||
+      (userRole === 'dean' && targetRole !== 'admin' && targetCampus === myCampus)
+    if (canEdit) {
+      permitted.push({
+        label: 'Edit Account',
+        icon: 'edit',
+        onClick: () => setEditingUser(target),
+      })
+    }
+
+    // Reset Password permissions
+    const canResetPassword =
+      userRole === 'admin' ||
+      (userRole === 'viceDean') ||
+      (userRole === 'dean')
+    if (canResetPassword) {
+      permitted.push({
+        label: 'Reset Password',
+        icon: 'key',
+        onClick: () => {
+          setResetTargetUser(target)
+          setCustomPassword('')
+        },
+      })
+    }
+
+    // Suspend/Reactivate permissions
+    const canToggleStatus =
+      userRole === 'admin' ||
+      (userRole === 'viceDean' && targetRole !== 'admin') ||
+      (userRole === 'dean' && targetRole !== 'admin' && targetCampus === myCampus &&
+        targetRole !== 'admin')
+    if (canToggleStatus) {
+      permitted.push({
+        label: targetStatus === 'active' ? 'Deactivate Account' : 'Reactivate Account',
+        icon: targetStatus === 'active' ? 'x-circle' : 'check-circle',
+        className: targetStatus === 'active' ? 'text-amber-700' : 'text-emerald-700',
+        onClick: () => handleToggleStatus(target),
+      })
+    }
+
+    // Delete permissions
+    const canDelete =
+      userRole === 'admin' ||
+      (userRole === 'viceDean' && targetRole !== 'admin' && targetRole !== 'viceDean') ||
+      (userRole === 'dean' && targetRole === 'student' && targetCampus === myCampus)
+    // Never allow deletion of protected roles: Admin, Super Admin, Student, Campus Dean
+    const isProtectedRole = ['admin', 'student', 'dean'].includes(targetRole)
+    if (canDelete && !isProtectedRole) {
+      permitted.push({
+        label: 'Delete',
+        icon: 'trash',
+        className: 'text-rose-700 font-bold',
+        separator: true,
+        onClick: () => setDeleteTarget(target),
+      })
+    }
+
+    return permitted
   }
 
   // Filtered lists
@@ -865,6 +1268,13 @@ const UserManagement = () => {
           >
             + Create Account
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsImportOpen(true)}
+            className="px-4 py-2 font-bold text-dillaGreen hover:text-dillaDarkGreen cursor-pointer"
+          >
+            + Import Students
+          </Button>
         </div>
       </div>
 
@@ -997,6 +1407,18 @@ const UserManagement = () => {
         >
           Student Accounts ({students.length})
         </button>
+        {(authenticatedRole === 'admin' || authenticatedRole === 'super_admin') && (
+          <button
+            onClick={() => setActiveTab('customFields')}
+            className={`pb-3 px-5 text-sm font-bold transition-all cursor-pointer border-b-2 ${
+              activeTab === 'customFields'
+                ? 'border-dillaGreen text-dillaGreen'
+                : 'border-transparent text-slate-500 hover:text-dillaDarkGreen'
+            }`}
+          >
+            Custom Fields ({customFields.length})
+          </button>
+        )}
       </div>
 
       {/* Tab 1: Campus Cafe Deans */}
@@ -1099,39 +1521,7 @@ const UserManagement = () => {
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <div className="flex justify-end">
-                          <ActionMenu items={[
-                            {
-                              label: 'View Details',
-                              icon: 'eye',
-                              onClick: () => setViewingUser(dean),
-                            },
-                            {
-                              label: 'Edit Account',
-                              icon: 'edit',
-                              onClick: () => setEditingUser(dean),
-                            },
-                            {
-                              label: 'Reset Password',
-                              icon: 'key',
-                              onClick: () => {
-                                setResetTargetUser(dean)
-                                setCustomPassword('Dean@Dilla2026!')
-                              },
-                            },
-                            {
-                              label: dean.status === 'active' ? 'Deactivate Account' : 'Reactivate Account',
-                              icon: dean.status === 'active' ? 'x-circle' : 'check-circle',
-                              className: dean.status === 'active' ? 'text-amber-700' : 'text-emerald-700',
-                              onClick: () => handleToggleStatus(dean),
-                            },
-                            {
-                              label: 'Delete Dean',
-                              icon: 'trash',
-                              className: 'text-rose-700 font-bold',
-                              separator: true,
-                              onClick: () => setDeleteTarget(dean),
-                            },
-                          ]} />
+                          <ActionMenu items={getPermittedActionMenuItems(authenticatedRole, dean)} />
                         </div>
                       </td>
                     </tr>
@@ -1244,39 +1634,7 @@ const UserManagement = () => {
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <div className="flex justify-end">
-                          <ActionMenu items={[
-                            {
-                              label: 'View Details',
-                              icon: 'eye',
-                              onClick: () => setViewingUser(viceDean),
-                            },
-                            {
-                              label: 'Edit Account',
-                              icon: 'edit',
-                              onClick: () => setEditingUser(viceDean),
-                            },
-                            {
-                              label: 'Reset Password',
-                              icon: 'key',
-                              onClick: () => {
-                                setResetTargetUser(viceDean)
-                                setCustomPassword('ViceDean@Dilla2026!')
-                              },
-                            },
-                            {
-                              label: viceDean.status === 'active' ? 'Deactivate Account' : 'Reactivate Account',
-                              icon: viceDean.status === 'active' ? 'x-circle' : 'check-circle',
-                              className: viceDean.status === 'active' ? 'text-amber-700' : 'text-emerald-700',
-                              onClick: () => handleToggleStatus(viceDean),
-                            },
-                            {
-                              label: 'Delete Vice Dean',
-                              icon: 'trash',
-                              className: 'text-rose-700 font-bold',
-                              separator: true,
-                              onClick: () => setDeleteTarget(viceDean),
-                            },
-                          ]} />
+                          <ActionMenu items={getPermittedActionMenuItems(authenticatedRole, viceDean)} />
                         </div>
                       </td>
                     </tr>
@@ -1370,6 +1728,40 @@ const UserManagement = () => {
             </div>
           </div>
 
+          {/* Bulk actions */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleExportStudents('xlsx')}
+                disabled={isExporting || students.length === 0}
+                className="text-xs font-bold text-dillaGreen"
+              >
+                <Icon name="download" className="w-3.5 h-3.5 mr-1" />
+                {isExporting ? 'Exporting…' : 'Export Excel'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleExportStudents('csv')}
+                disabled={isExporting || students.length === 0}
+                className="text-xs font-bold text-dillaGreen"
+              >
+                <Icon name="download" className="w-3.5 h-3.5 mr-1" />
+                Export CSV
+              </Button>
+            </div>
+            {canManageAllStudents && (
+              <Button
+                variant="outline"
+                onClick={openDeleteAllStudents}
+                className="text-xs font-bold text-rose-600 border-rose-200 hover:bg-rose-50"
+              >
+                <Icon name="trash" className="w-3.5 h-3.5 mr-1" />
+                Delete All Students
+              </Button>
+            )}
+          </div>
+
           {/* Students Table */}
           <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs">
             <table className="min-w-full bg-white divide-y divide-slate-200">
@@ -1407,6 +1799,11 @@ const UserManagement = () => {
                             />
                           ) : null}
                           {st.fullName || st.studentName}
+                          {st.profileComplete === false && (
+                            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
+                              Profile Incomplete
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-slate-800 font-medium">{st.campus}</td>
@@ -1416,46 +1813,7 @@ const UserManagement = () => {
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <div className="flex justify-end">
-                          <ActionMenu items={[
-                            {
-                              label: 'View Full Dossier',
-                              icon: 'eye',
-                              onClick: () => {
-                                setDetailStudentId(st.studentId || st.id)
-                                setDetailInitialData(st)
-                                setShowDetailModal(true)
-                              },
-                            },
-                            {
-                              label: 'Edit Student',
-                              icon: 'edit',
-                              onClick: () => {
-                                setEditStudentTarget(st)
-                                setShowEditStudentModal(true)
-                              },
-                            },
-                            {
-                              label: 'Reset Password',
-                              icon: 'key',
-                              onClick: () => {
-                                setResetTargetUser(st)
-                                setCustomPassword('Student@Dilla2026!')
-                              },
-                            },
-                            {
-                              label: (st.userStatus || st.status) === 'active' ? 'Deactivate Account' : 'Reactivate Account',
-                              icon: (st.userStatus || st.status) === 'active' ? 'x-circle' : 'check-circle',
-                              className: (st.userStatus || st.status) === 'active' ? 'text-amber-700' : 'text-emerald-700',
-                              onClick: () => handleToggleStatus(st),
-                            },
-                            {
-                              label: 'Delete Student',
-                              icon: 'trash',
-                              className: 'text-rose-700 font-bold',
-                              separator: true,
-                              onClick: () => setDeleteTarget(st),
-                            },
-                          ]} />
+                          <ActionMenu items={getPermittedActionMenuItems(authenticatedRole, st)} />
                         </div>
                       </td>
                     </tr>
@@ -1464,6 +1822,241 @@ const UserManagement = () => {
               </tbody>
             </table>
             {renderPagination(filteredStudents.length)}
+          </div>
+        </div>
+)}
+      {/* Custom Fields Tab */}
+      {activeTab === 'customFields' && (
+        <div className="space-y-6">
+          <div className="bg-[#f8faf9] border border-slate-200 rounded-2xl p-5">
+            <h3 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-3">
+              Custom Field Management
+            </h3>
+            
+            {/* Create Custom Field Form */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Field Key</label>
+                <Input
+                  placeholder="e.g. guardian_contact"
+                  value={newFieldKey}
+                  onChange={(e) => setNewFieldKey(e.target.value)}
+                  className="text-slate-900 h-10"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Label</label>
+                <Input
+                  placeholder="e.g. Guardian Contact"
+                  value={newFieldLabel}
+                  onChange={(e) => setNewFieldLabel(e.target.value)}
+                  className="text-slate-900 h-10"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Field Type</label>
+                <Select
+                  name="fieldType"
+                  options={['text', 'textarea', 'number', 'date', 'select', 'checkbox']}
+                  value={newFieldType}
+                  onChange={(e) => setNewFieldType(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Applicability</label>
+                <Select
+                  name="applicability"
+                  options={['cafe', 'non-cafe', 'both']}
+                  value={newFieldApplicability}
+                  onChange={(e) => setNewFieldApplicability(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Required</label>
+                <Select
+                  name="isRequired"
+                  options={['false', 'true']}
+                  value={newFieldRequired}
+                  onChange={(e) => setNewFieldRequired(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Display Order</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={newFieldDisplayOrder}
+                  onChange={(e) => setNewFieldDisplayOrder(e.target.value)}
+                  className="text-slate-900 h-10"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Visible to Students</label>
+                <Select
+                  name="visibleStudent"
+                  options={['true', 'false']}
+                  value={newFieldVisibleStudent}
+                  onChange={(e) => setNewFieldVisibleStudent(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">Visible to Admin</label>
+                <Select
+                  name="visibleAdmin"
+                  options={['true', 'false']}
+                  value={newFieldVisibleAdmin}
+                  onChange={(e) => setNewFieldVisibleAdmin(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <Button onClick={handleCreateCustomField} variant="primary" className="font-bold cursor-pointer w-full">
+              + Create Custom Field
+            </Button>
+          </div>
+          
+          {/* Existing Custom Fields Table */}
+          <div className="bg-[#f8faf9] border border-slate-200 rounded-2xl p-5">
+            <h3 className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-3">
+              Existing Custom Fields
+            </h3>
+            
+            {customFields.length === 0 ? (
+              <p className="text-slate-500 text-sm">No custom fields defined yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white divide-y divide-slate-200">
+                  <thead className="bg-[#f1f5f3]">
+                    <tr>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">Key</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">Label</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">Type</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">Applicability</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3.5 text-right text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white text-xs">
+                    {customFields.map((cf) => (
+                      <tr key={cf.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3.5 font-mono text-slate-800">{cf.field_key}</td>
+                        <td className="px-4 py-3.5 font-bold text-slate-900">{cf.label}</td>
+                        <td className="px-4 py-3.5 text-slate-700">{cf.field_type}</td>
+                        <td className="px-4 py-3.5 text-slate-700">
+                          {cf.applies_to === 'cafe'
+                            ? 'Cafe Only'
+                            : cf.applies_to === 'non-cafe'
+                            ? 'Non-Cafe Only'
+                            : 'All Students'}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {cf.is_active ? (
+                            <span className="text-emerald-600 text-xs font-medium">Active</span>
+                          ) : (
+                            <span className="text-rose-600 text-xs font-medium">Inactive</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <div className="flex justify-end">
+                            <ActionMenu
+                              items={[
+                                { label: 'Edit Field', icon: 'edit', onClick: () => openEditModal(cf) },
+                                {
+                                  label: cf.is_active ? 'Deactivate Field' : 'Activate Field',
+                                  icon: cf.is_active ? 'x-circle' : 'check-circle',
+                                  variant: cf.is_active ? 'warning' : 'success',
+                                  onClick: () => handleToggleFieldStatus(cf),
+                                },
+                                {
+                                  label: 'Delete Field',
+                                  icon: 'trash',
+                                  variant: 'danger',
+                                  separator: true,
+                                  onClick: () => deleteCustomField(cf.id),
+                                },
+                              ]}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Edit Custom Field Modal */}
+      {editingField && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <h3 className="text-lg font-bold text-dillaDarkGreen">Edit Custom Field</h3>
+              <button
+                onClick={() => setEditingField(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Field Key</label>
+                <Input value={editingField.field_key} disabled className="text-slate-500 h-10 bg-slate-100" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Label</label>
+                <Input
+                  value={editingField.label}
+                  onChange={(e) => setEditingField({ ...editingField, label: e.target.value })}
+                  className="text-slate-900 h-10"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Field Type</label>
+                <Select
+                  name="editFieldType"
+                  options={['text', 'textarea', 'number', 'date', 'select', 'checkbox']}
+                  value={editingField.field_type}
+                  onChange={(e) => setEditingField({ ...editingField, field_type: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Required</label>
+                  <Select
+                    name="editRequired"
+                    options={['false', 'true']}
+                    value={String(Boolean(editingField.is_required))}
+                    onChange={(e) => setEditingField({ ...editingField, is_required: e.target.value === 'true' })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Status</label>
+                  <Select
+                    name="editStatus"
+                    options={['Active', 'Inactive']}
+                    value={editingField.is_active ? 'Active' : 'Inactive'}
+                    onChange={(e) => setEditingField({ ...editingField, is_active: e.target.value === 'Active' })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-6 pt-3 border-t border-slate-200">
+              <Button variant="outline" onClick={() => setEditingField(null)} className="flex-1 cursor-pointer">
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleUpdateCustomField} className="flex-1 font-bold cursor-pointer">
+                Save Changes
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -1674,6 +2267,32 @@ const UserManagement = () => {
         }
         confirmLabel="Delete Account"
         danger
+      />
+
+      {/* Delete All Students Confirmation */}
+      <ConfirmModal
+        isOpen={deleteAllOpen}
+        onClose={() => setDeleteAllOpen(false)}
+        onConfirm={handleDeleteAllStudents}
+        isLoading={isDeletingAll}
+        title="Delete All Students"
+        description={
+          activeStudentCount === null
+            ? 'This will archive every student record. Registrations, approvals and history are preserved and can be restored. This is restricted to the Super Admin.'
+            : `This will archive all ${activeStudentCount} active student record(s) and deactivate their login accounts. Records are soft-deleted and remain recoverable; nothing is permanently destroyed.`
+        }
+        confirmLabel={isDeletingAll ? 'Archiving…' : 'Archive All Students'}
+        danger
+      />
+
+      {/* Import Students Modal */}
+      <ImportStudents
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImportSuccess={() => {
+          setIsImportOpen(false)
+          loadData()
+        }}
       />
     </div>
   )

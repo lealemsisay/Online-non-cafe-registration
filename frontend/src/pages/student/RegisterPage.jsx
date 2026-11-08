@@ -10,6 +10,9 @@ const RegisterPage = () => {
   const userCampus = localStorage.getItem('userCampus') || 'Main Campus'
   const token = localStorage.getItem('token')
 
+  // Check if user is already logged in (imported student)
+  const hasToken = !!token
+
   const [initialData, setInitialData] = useState({
     studentId,
     fullName: userName,
@@ -20,6 +23,14 @@ const RegisterPage = () => {
 
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    // If user is already logged in (has token from import), redirect to dashboard
+    if (hasToken) {
+      navigate('/dashboard')
+      return
+    }
+  }, [navigate, hasToken])
 
   useEffect(() => {
     if (studentId) {
@@ -86,25 +97,45 @@ const RegisterPage = () => {
 
   return (
     <div className="py-4 space-y-4">
-      {message && (
-        <div className="max-w-4xl mx-auto bg-emerald-50 border-l-4 border-emerald-600 text-emerald-900 p-4 rounded-xl shadow-sm flex items-center gap-2">
-          <Icon name="check-circle" className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-          <span className="text-sm font-semibold">{message}</span>
+      {!hasToken && (
+        <div className="bg-white shadow-xl rounded-2xl p-8 sm:p-10 border border-slate-200 max-w-2xl mx-auto">
+          <div className="bg-dillaDarkGreen text-white p-6 text-center mb-8">
+            <div className="w-16 h-16 rounded-2xl mx-auto mb-3 shadow-lg border border-slate-200 flex items-center justify-center">
+              <Icon name="lock" className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold">
+              Student Registration Disabled
+            </h1>
+            <p className="text-white/80 mt-2 text-lg">
+              Student self-registration has been disabled. Student accounts must be imported by an authorized Admin or Super Admin.
+            </p>
+          </div>
+
+          {error && (
+            <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-900 p-4 rounded-xl mb-6 flex items-center gap-2">
+              <Icon name="alert-circle" className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {message && (
+            <div className="bg-emerald-50 border-l-4 border-emerald-600 text-emerald-900 p-4 rounded-xl mb-6 flex items-center gap-2">
+              <Icon name="check-circle" className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <span>{message}</span>
+            </div>
+          )}
         </div>
       )}
-      {error && (
-        <div className="max-w-4xl mx-auto bg-rose-50 border-l-4 border-rose-600 text-rose-900 p-4 rounded-xl shadow-sm flex items-center gap-2">
-          <Icon name="alert-circle" className="w-5 h-5 text-rose-600 flex-shrink-0" />
-          <span className="text-sm font-semibold">{error}</span>
-        </div>
+
+      {hasToken && (
+        <RegistrationForm
+          studentId={studentId}
+          initialData={initialData}
+          onSubmit={handleSubmit}
+          onUpload={handleUpload}
+          onCancel={() => navigate('/')}
+        />
       )}
-      <RegistrationForm
-        studentId={studentId}
-        initialData={initialData}
-        onSubmit={handleSubmit}
-        onUpload={handleUpload}
-        onCancel={() => navigate('/')}
-      />
     </div>
   )
 }

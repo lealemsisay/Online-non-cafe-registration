@@ -23,8 +23,8 @@ export default async function handler(req, res) {
     const client = await pool.connect()
     try {
       const result = await client.query(
-        `SELECT id, username, password_hash, alt_password_hash, full_name, role, campus, email, status 
-         FROM app_user 
+        `SELECT id, username, password_hash, alt_password_hash, full_name, role, campus, email, status, must_change_password
+         FROM app_user
          WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
         [id]
       )
@@ -58,6 +58,49 @@ export default async function handler(req, res) {
       if (!ok) {
         console.warn(`[AUTH] Invalid password attempt for user: "${user.username}"`)
         return res.status(401).json({ message: 'Invalid credentials' })
+      }
+
+      // Force password change on first login for imported students
+      // Triggered when: (a) the persistent must_change_password flag is set, or
+      // (b) the password entered equals the username (initial password = student ID).
+      const passwordMatchesUsername = pwd.trim() === user.username
+      const isInitialPassword = user.role === 'student' && (passwordMatchesUsername || user.must_change_password === true)
+
+      if (isInitialPassword && user.role === 'student') {
+        // Student logging in with initial password (student ID) must change password
+        const forcedChangeToken = signToken({
+          id: user.id,
+          role: 'student',
+          forcePasswordChange: true,
+          campus: user.campus,
+          name: user.full_name,
+          username: user.username,
+          email: user.email,
+        })
+
+        // Persist the must_change_password flag so it survives token expiry
+        if (!user.must_change_password) {
+          await client.query(
+            'UPDATE app_user SET must_change_password = true, updated_at = NOW() WHERE id = $1',
+            [user.id]
+          )
+        }
+
+        return res.status(200).json({
+          user: {
+            id: user.id,
+            name: user.full_name,
+            role: user.role,
+            campus: user.campus,
+            studentId: user.username,
+            username: user.username,
+            email: user.email,
+            forcePasswordChange: true,
+            mustChangePassword: true,
+          },
+          token: forcedChangeToken,
+          requiresPasswordChange: true,
+        })
       }
 
       console.log(`[AUTH] Login successful: "${user.username}" (role: ${user.role})`)

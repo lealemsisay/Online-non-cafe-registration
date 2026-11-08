@@ -49,6 +49,14 @@ const LoginPage = () => {
       localStorage.setItem('studentId', data.user.studentId || '')
       localStorage.setItem('userEmail', data.user.email || '')
 
+      // First-login / forced password change: redirect to change-password page
+      if (data.requiresPasswordChange || data.user.forcePasswordChange || data.user.mustChangePassword) {
+        localStorage.setItem('mustChangePassword', 'true')
+        window.location.href = '/change-password'
+        setLoading(false)
+        return
+      }
+
       if (data.user.role === 'student') {
         window.location.href = '/'
       } else if (data.user.role === 'dean') {

@@ -151,8 +151,8 @@ const RegistrationForm = ({
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('File size exceeds the 5MB institutional limit')
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('File size exceeds the 10MB institutional limit')
       return
     }
 
@@ -179,6 +179,12 @@ const RegistrationForm = ({
 
     if (!formData.studentId || !formData.fullName) {
       setUploadError('Student ID and Full Name are mandatory.')
+      return
+    }
+
+    // Require PDF attachment before submission
+    if (!formData.pdfFileName) {
+      setUploadError('Please attach your PDF document before submitting your application.')
       return
     }
 
@@ -755,7 +761,7 @@ const RegistrationForm = ({
                 ? `Attached: ${formData.pdfFileName}`
                 : 'Click to select and upload your semester registration slip (PDF)'}
             </p>
-            <p className="text-xs text-slate-500 mt-1">Accepted format: PDF • Maximum file size: 5MB</p>
+            <p className="text-xs text-slate-500 mt-1">Accepted format: PDF • Maximum file size: 10MB</p>
 
             {uploadProgress > 0 && uploadProgress < 100 && (
               <div className="mt-3 w-48 mx-auto bg-slate-200 rounded-full h-1.5 overflow-hidden">
@@ -808,12 +814,12 @@ const RegistrationForm = ({
             Cancel Application
           </Button>
 
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-            variant="primary"
-            className="w-full sm:w-auto px-6 py-2.5 font-bold shadow-md"
-          >
+<Button
+              type="submit"
+              disabled={isSubmitting || !formData.pdfFileName}
+              variant="primary"
+              className="w-full sm:w-auto px-6 py-2.5 font-bold shadow-md"
+            >
             {isSubmitting ? 'Submitting Application...' : 'Submit Application for Review →'}
           </Button>
         </div>

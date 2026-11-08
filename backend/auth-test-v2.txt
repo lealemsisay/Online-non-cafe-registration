@@ -1,0 +1,128 @@
+
+> backend@1.0.0 test:auth
+> node scripts/verify-auth-flows.mjs
+
+◇ injected env (2) from .env
+======================================================================
+       DILLA UNIVERSITY - AUTHENTICATION & ACCESS VERIFICATION        
+======================================================================
+
+TEST SUITE 1: PostgreSQL Records & Schema Verification
+  ✓ Found 115 app_user records in PostgreSQL
+  ✓ Super Admin user exists: admin
+  ✓ Campus Dean user exists: dean
+  ✓ Student user exists: student
+  ✓ Campus records exist: count=3
+  ✓ Student registration records exist: count=101
+  ✓ Academic year records exist: count=3
+
+TEST SUITE 2: Login Endpoint Authentication (/api/auth/login)
+  ✓ Super Admin (username + strong pw) authenticated successfully (HTTP 200)
+  ✓ Super Admin (username + strong pw) returned correct role: admin
+  ✓ Super Admin (username + strong pw) returned valid JWT token
+  ✓ Super Admin (email + strong pw) authenticated successfully (HTTP 200)
+  ✓ Super Admin (email + strong pw) returned correct role: admin
+  ✓ Super Admin (email + strong pw) returned valid JWT token
+  ✓ Campus Dean (username + strong pw) authenticated successfully (HTTP 200)
+  ✓ Campus Dean (username + strong pw) returned correct role: dean
+  ✓ Campus Dean (username + strong pw) returned valid JWT token
+  ✓ Campus Dean (email + strong pw) authenticated successfully (HTTP 200)
+  ✓ Campus Dean (email + strong pw) returned correct role: dean
+  ✓ Campus Dean (email + strong pw) returned valid JWT token
+  ✓ Student (ID + strong pw) authenticated successfully (HTTP 200)
+  ✓ Student (ID + strong pw) returned correct role: student
+  ✓ Student (ID + strong pw) returned valid JWT token
+  ✓ Student (email + strong pw) authenticated successfully (HTTP 200)
+  ✓ Student (email + strong pw) returned correct role: student
+  ✓ Student (email + strong pw) returned valid JWT token
+  ✓ Super Admin (username + simple dev pw admin@123) authenticated successfully (HTTP 200)
+  ✓ Super Admin (username + simple dev pw admin@123) returned correct role: admin
+  ✓ Super Admin (username + simple dev pw admin@123) returned valid JWT token
+  ✓ Campus Dean (username + simple dev pw dean@123) authenticated successfully (HTTP 200)
+  ✓ Campus Dean (username + simple dev pw dean@123) returned correct role: dean
+  ✓ Campus Dean (username + simple dev pw dean@123) returned valid JWT token
+  ✓ Campus Dean alias "dean" + simple dev pw authenticated successfully (HTTP 200)
+  ✓ Campus Dean alias "dean" + simple dev pw returned correct role: dean
+  ✓ Campus Dean alias "dean" + simple dev pw returned valid JWT token
+  ✓ Campus Dean alias "dean" + strong pw authenticated successfully (HTTP 200)
+  ✓ Campus Dean alias "dean" + strong pw returned correct role: dean
+  ✓ Campus Dean alias "dean" + strong pw returned valid JWT token
+  ✓ Student (ID + simple dev pw student@123) authenticated successfully (HTTP 200)
+  ✓ Student (ID + simple dev pw student@123) returned correct role: student
+  ✓ Student (ID + simple dev pw student@123) returned valid JWT token
+  ✓ Student alias "student" + simple dev pw authenticated successfully (HTTP 200)
+  ✓ Student alias "student" + simple dev pw returned correct role: student
+  ✓ Student alias "student" + simple dev pw returned valid JWT token
+  ✓ Student alias "student" + strong pw authenticated successfully (HTTP 200)
+  ✓ Student alias "student" + strong pw returned correct role: student
+  ✓ Student alias "student" + strong pw returned valid JWT token
+  ✓ Student (lowercase ID "duc2023-001") authenticated successfully (HTTP 200)
+  ✓ Student (lowercase ID "duc2023-001") returned correct role: student
+  ✓ Student (lowercase ID "duc2023-001") returned valid JWT token
+  ✓ Student (lowercase ID "duc2023-001" + simple pw) authenticated successfully (HTTP 200)
+  ✓ Student (lowercase ID "duc2023-001" + simple pw) returned correct role: student
+  ✓ Student (lowercase ID "duc2023-001" + simple pw) returned valid JWT token
+  ✓ Super Admin (uppercase "ADMIN") authenticated successfully (HTTP 200)
+  ✓ Super Admin (uppercase "ADMIN") returned correct role: admin
+  ✓ Super Admin (uppercase "ADMIN") returned valid JWT token
+  ✓ Super Admin (username with whitespace) authenticated successfully (HTTP 200)
+  ✓ Super Admin (username with whitespace) returned correct role: admin
+  ✓ Super Admin (username with whitespace) returned valid JWT token
+  ✓ Student (ID and password with whitespace) authenticated successfully (HTTP 200)
+  ✓ Student (ID and password with whitespace) returned correct role: student
+  ✓ Student (ID and password with whitespace) returned valid JWT token
+
+TEST SUITE 3: Login Security & Failure Handling
+  ✓ Invalid password returns HTTP 401 Unauthorized
+  ✓ Nonexistent user returns HTTP 401 Unauthorized
+  ✓ Empty login payload returns HTTP 400 Bad Request
+
+TEST SUITE 4: Student Self-Registration & Privilege Escalation Prevention
+  ✓ Public registration attempting role="admin" is strictly FORBIDDEN (HTTP 403)
+  ✓ Public registration attempting role="dean" is strictly FORBIDDEN (HTTP 403)
+  ✓ Student self-registration succeeds (HTTP 201) for ID: DUC-TEST-1582
+  ✓ Self-registered user has role="student"
+  ✓ Newly self-registered student can log in successfully (HTTP 200)
+
+TEST SUITE 5: Password Change for Authenticated Roles (/api/auth/change-password)
+  ✓ Password change with wrong current password returns HTTP 400
+  ✓ Self-service password change succeeds (HTTP 200)
+  ✓ Login succeeds with changed password (HTTP 200)
+
+TEST SUITE 6: Authorized Password Resets with Role Hierarchy
+  ✓ Super Admin can reset Campus Dean password (HTTP 200)
+  ✓ Campus Dean can reset Student password in their campus (HTTP 200)
+  ✓ Campus Dean is FORBIDDEN from resetting Super Admin password (HTTP 403)
+  ✓ Student is FORBIDDEN from calling authorized reset-password (HTTP 403)
+
+TEST SUITE 7: Campus Dean Campus Scoping Isolation
+  ✓ Campus Dean reviewing student from another campus is FORBIDDEN (HTTP 403)
+  ✓ Campus Dean resetting student in another campus is FORBIDDEN (HTTP 403)
+
+TEST SUITE 8: Account Status (Active/Inactive) Security
+  ✓ Super Admin can deactivate an account (HTTP 200)
+  ✓ Deactivated account cannot log in (HTTP 403 Forbidden)
+  ✓ Super Admin can reactivate account (HTTP 200)
+
+TEST SUITE 9: Protected API Route Authorization
+  ✓ GET /api/campuses unauthenticated returns HTTP 401
+  ✓ GET /api/profile unauthenticated returns HTTP 401
+  ✓ Super Admin can access GET /api/campuses (HTTP 200)
+  ✓ Super Admin can execute final approval on /api/approval/final (HTTP 200)
+  ✓ Campus Dean can access GET /api/users for their campus (HTTP 200)
+  ✓ Campus Dean can submit review on /api/review/submit (HTTP 200)
+  ✓ Campus Dean is FORBIDDEN from Super Admin approval endpoint (HTTP 403)
+  ✓ Student can access their own GET /api/profile (HTTP 200)
+  ✓ Student profile includes student registration record
+  ✓ Student profile contains department
+  ✓ Student is FORBIDDEN from Super Admin approval endpoint (HTTP 403)
+  ✓ Student is FORBIDDEN from Campus Dean review endpoint (HTTP 403)
+
+TEST SUITE 10: System Settings Scoping
+  ✓ Super Admin can update system settings and academic years (HTTP 200)
+  ✓ Student is FORBIDDEN from updating settings (HTTP 403)
+
+======================================================================
+TOTAL TESTS: 95 | PASSED: 95 | FAILED: 0
+======================================================================
+

@@ -28,14 +28,7 @@ export default async function handler(req, res) {
       customValues,
     } = body
 
-    // SECURITY: Strictly prevent public registration as Admin, Dean, or any non-student role
-    if (requestedRole && requestedRole.toLowerCase() !== 'student') {
-      return res.status(403).json({
-        message: 'Forbidden: Public registration is strictly restricted to students. Administrative and Dean accounts must be provisioned by Super Admin.',
-      })
-    }
-
-    // TASK 4: Enforce registration schedule window in backend
+    // TASK: Enforce registration schedule window in backend
     const windowCheck = await checkRegistrationWindow()
     if (!windowCheck.isOpen) {
       return res.status(403).json({
@@ -44,9 +37,42 @@ export default async function handler(req, res) {
       })
     }
 
+    // SECURITY: Strictly prevent public registration as Admin, Dean, or any non-student role
+    if (requestedRole && requestedRole.toLowerCase() !== 'student') {
+      return res.status(403).json({
+        message: 'Forbidden: Public registration is strictly restricted to students. Administrative and Dean accounts must be provisioned by Super Admin.',
+      })
+    }
+
+    // Check for duplicate student ID - prevent even during self-registration
     const cleanUsername = (username || rawStudentId || '').trim()
     const cleanStudentId = (rawStudentId || username || '').trim()
     const cleanFullName = (fullName || '').trim()
+
+    if (cleanStudentId) {
+      const client = await pool.connect()
+      try {
+        const existingUser = await client.query(
+          `SELECT id, username FROM app_user WHERE LOWER(username) = LOWER($1)`,
+          [cleanStudentId]
+        )
+        const existingStudent = await client.query(
+          `SELECT id, student_id FROM student WHERE LOWER(student_id) = LOWER($1)`,
+          [cleanStudentId]
+        )
+
+        if (existingUser.rows.length > 0 || existingStudent.rows.length > 0) {
+          // Student ID already exists - prevent duplicate
+          return res.status(409).json({
+            message: 'A student with this Student ID already exists. Please use a unique Student ID.',
+          })
+        }
+      } finally {
+        client.release()
+      }
+    }
+
+    // Registration window is open - proceed with student self-registration
     const cleanPassword = (password || '').trim()
     const cleanEmail = (email || '').trim().toLowerCase()
     const cleanCampus = (campus || 'Main Campus').trim()

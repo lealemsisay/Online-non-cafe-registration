@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Input, Button } from '@/components/forms'
 import { StatusBadge } from '@/components/status/StatusBadge'
 import Icon from '@/components/icons/Icon'
+import ActionMenu from '@/components/common/ActionMenu'
 
 const CampusManagement = () => {
   const [campuses, setCampuses] = useState([])
@@ -318,29 +319,27 @@ const CampusManagement = () => {
                   <td className="px-4 py-3.5">
                     <StatusBadge status={campus.status} />
                   </td>
-                  <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1.5">
-                    <button
-                      onClick={() => handleEdit(campus)}
-                      className="px-2.5 py-1 text-xs font-semibold text-dillaDarkGreen bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleToggleStatus(campus.id)}
-                      className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                        campus.status === 'active'
-                          ? 'text-amber-800 bg-amber-50 hover:bg-amber-100'
-                          : 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
-                        }`}
-                    >
-                      {campus.status === 'active' ? 'Deactivate' : 'Reactivate'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(campus.id, campus.name)}
-                      className="px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
-                    >
-                      Delete
-                    </button>
+                  <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                    <div className="flex justify-end">
+                      <ActionMenu
+                        items={[
+                          { label: 'Edit Details', icon: 'edit', onClick: () => handleEdit(campus) },
+                          {
+                            label: campus.status === 'active' ? 'Deactivate Campus' : 'Reactivate Campus',
+                            icon: campus.status === 'active' ? 'x-circle' : 'check-circle',
+                            variant: campus.status === 'active' ? 'warning' : 'success',
+                            onClick: () => handleToggleStatus(campus.id),
+                          },
+                          {
+                            label: 'Delete Campus',
+                            icon: 'trash',
+                            variant: 'danger',
+                            separator: true,
+                            onClick: () => handleDelete(campus.id, campus.name),
+                          },
+                        ]}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))

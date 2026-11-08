@@ -1,6 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Icon from '@/components/icons/Icon'
 
+const FORMAT_MIMES = { jpg: ['image/jpeg', 'image/jpg'], png: ['image/png'], webp: ['image/webp'] }
+const FORMAT_EXTS = { jpg: ['.jpg', '.jpeg'], png: ['.png'], webp: ['.webp'] }
+const FORMAT_LABELS = { jpg: 'JPG/JPEG', png: 'PNG', webp: 'WebP' }
+const DEFAULT_PHOTO_SETTINGS = {
+  maxSizeMB: 8,
+  allowedFormats: ['jpg', 'png'],
+  required: false,
+  aspectRatio: { enabled: false, width: 3, height: 4, tolerancePercent: 10 },
+  minWidth: null,
+  minHeight: null,
+  maxWidth: null,
+  maxHeight: null,
+}
+
+// Mirrors the server-side checks (the server always re-validates).
+const validateDimensions = (w, h, s) => {
+  if (s.minWidth && w < s.minWidth) return `Photo width (${w}px) is below the minimum of ${s.minWidth}px.`
+  if (s.minHeight && h < s.minHeight) return `Photo height (${h}px) is below the minimum of ${s.minHeight}px.`
+  if (s.maxWidth && w > s.maxWidth) return `Photo width (${w}px) exceeds the maximum of ${s.maxWidth}px.`
+  if (s.maxHeight && h > s.maxHeight) return `Photo height (${h}px) exceeds the maximum of ${s.maxHeight}px.`
+  if (s.aspectRatio?.enabled) {
+    const target = s.aspectRatio.width / s.aspectRatio.height
+    const deviation = Math.abs(w / h - target) / target
+    if (deviation > (s.aspectRatio.tolerancePercent || 0) / 100) {
+      return `Photo aspect ratio must be about ${s.aspectRatio.width}:${s.aspectRatio.height} (±${s.aspectRatio.tolerancePercent}%). Your photo is ${w}×${h}px.`
+    }
+  }
+  return null
+}
+
 const PassportPhotoUpload = ({
   photoUrl,
   currentPhotoUrl,
@@ -15,7 +45,9 @@ const PassportPhotoUpload = ({
   const [currentPhoto, setCurrentPhoto] = useState(initialPhoto)
   const [preview, setPreview] = useState(null)
   const [selectedFile, setSelectedFile] = useState(null)
-  const [maxPhotoSizeMB, setMaxPhotoSizeMB] = useState(8)
+  const [photoSettings, setPhotoSettings] = useState(DEFAULT_PHOTO_SETTINGS)
+  const maxPhotoSizeMB = photoSettings.maxSizeMB
+  const formatText = photoSettings.allowedFormats.map((f) => FORMAT_LABELS[f] || f).join(', ')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
@@ -29,7 +61,7 @@ const PassportPhotoUpload = ({
     }
   }, [photoUrl, currentPhotoUrl])
 
-  // Fetch current admin-configured upload size limit from DB
+  // Fetch the admin-configured photo rules (size, formats, dimensions, required) from the database
   useEffect(() => {
     const token = localStorage.getItem('token')
     fetch('/api/settings', {
@@ -37,11 +69,13 @@ const PassportPhotoUpload = ({
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        const configuredLimit =
-          data?.systemSettings?.maxPhotoSizeMB ||
-          data?.systemSettings?.max_photo_size_mb
-        if (configuredLimit && Number(configuredLimit) >= 1) {
-          setMaxPhotoSizeMB(Number(configuredLimit))
+        if (data?.photoSettings) {
+          setPhotoSettings({ ...DEFAULT_PHOTO_SETTINGS, ...data.photoSettings })
+        } else {
+          const configuredLimit = data?.systemSettings?.maxPhotoSizeMB || data?.systemSettings?.max_photo_size_mb
+          if (configuredLimit && Number(configuredLimit) >= 1) {
+            setPhotoSettings((p) => ({ ...p, maxSizeMB: Number(configuredLimit) }))
+          }
         }
       })
       .catch(() => {})
@@ -53,33 +87,47 @@ const PassportPhotoUpload = ({
     const file = e.target.files?.[0]
     if (!file) return
 
-    // 1. Validate file extension and MIME type
-    const allowedExtensions = ['.jpg', '.jpeg', '.png']
-    const fileName = file.name.toLowerCase()
-    const hasValidExt = allowedExtensions.some((ext) => fileName.endsWith(ext))
-    const validMimes = ['image/jpeg', 'image/jpg', 'image/png']
-
-    if (!hasValidExt || !validMimes.includes(file.type.toLowerCase())) {
-      setError('Unsupported file format. Please upload a genuine JPG, JPEG, or PNG passport photo.')
+    const rejectFile = (message) => {
+      setError(message)
+      setPreview(null)
+      setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    // 1. Validate file extension and MIME type against the allowed formats
+    const allowedExts = photoSettings.allowedFormats.flatMap((f) => FORMAT_EXTS[f] || [])
+    const allowedMimes = photoSettings.allowedFormats.flatMap((f) => FORMAT_MIMES[f] || [])
+    const fileName = file.name.toLowerCase()
+    if (!allowedExts.some((ext) => fileName.endsWith(ext)) || !allowedMimes.includes(file.type.toLowerCase())) {
+      rejectFile(`Unsupported file format. Please upload a genuine photo in one of these formats: ${formatText}.`)
       return
     }
 
     // 2. Validate file size against dynamic admin-configured limit
     const fileSizeMB = file.size / (1024 * 1024)
     if (fileSizeMB > maxPhotoSizeMB) {
-      setError(
+      rejectFile(
         `File size (${fileSizeMB.toFixed(2)} MB) exceeds the university maximum limit of ${maxPhotoSizeMB} MB. Please select a smaller photo.`
       )
-      if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
-    // 3. Read image and create preview
-    setSelectedFile(file)
+    // 3. Read image, check dimensions / aspect ratio, then create preview
     const reader = new FileReader()
     reader.onload = () => {
-      setPreview(reader.result)
+      const dataUrl = reader.result
+      const img = new Image()
+      img.onload = () => {
+        const problem = validateDimensions(img.naturalWidth, img.naturalHeight, photoSettings)
+        if (problem) {
+          rejectFile(problem)
+          return
+        }
+        setSelectedFile(file)
+        setPreview(dataUrl)
+      }
+      img.onerror = () => rejectFile('The selected file could not be read as an image.')
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   }
@@ -142,6 +190,7 @@ const PassportPhotoUpload = ({
         <div className="flex items-center justify-between">
           <label className="block text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
             {label}
+            {photoSettings.required && <span className="text-rose-600 ml-1" title="Required">*</span>}
           </label>
           <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
             Max: <strong className="text-dillaGreen">{maxPhotoSizeMB} MB</strong>
@@ -182,7 +231,24 @@ const PassportPhotoUpload = ({
               {currentPhoto ? 'Passport Photograph on File' : 'Upload Official Student Photograph'}
             </h4>
             <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
-              Standard white or light background, front-facing, head and shoulders visible. Allowed: <strong>JPG, JPEG, PNG</strong> up to <strong>{maxPhotoSizeMB} MB</strong>.
+              Standard white or light background, front-facing, head and shoulders visible. Allowed: <strong>{formatText}</strong> up to <strong>{maxPhotoSizeMB} MB</strong>.
+              {photoSettings.aspectRatio?.enabled && (
+                <> Aspect ratio about <strong>{photoSettings.aspectRatio.width}:{photoSettings.aspectRatio.height}</strong>.</>
+              )}
+              {(photoSettings.minWidth || photoSettings.minHeight || photoSettings.maxWidth || photoSettings.maxHeight) && (
+                <>
+                  {' '}Size in pixels:{' '}
+                  {photoSettings.minWidth || photoSettings.minHeight
+                    ? `at least ${photoSettings.minWidth || '-'}×${photoSettings.minHeight || '-'}`
+                    : ''}
+                  {(photoSettings.minWidth || photoSettings.minHeight) && (photoSettings.maxWidth || photoSettings.maxHeight) ? ', ' : ''}
+                  {photoSettings.maxWidth || photoSettings.maxHeight
+                    ? `at most ${photoSettings.maxWidth || '-'}×${photoSettings.maxHeight || '-'}`
+                    : ''}
+                  .
+                </>
+              )}
+              {photoSettings.required && <span className="text-rose-700 font-semibold"> A photo is required.</span>}
             </p>
           </div>
 
@@ -192,7 +258,7 @@ const PassportPhotoUpload = ({
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
-                accept="image/jpeg,image/png,image/jpg"
+                accept={photoSettings.allowedFormats.flatMap((f) => FORMAT_MIMES[f] || []).join(",")}
                 className="hidden"
                 id="passport-photo-input"
               />

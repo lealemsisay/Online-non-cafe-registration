@@ -44,6 +44,7 @@ export function clearAuthStorage() {
     localStorage.removeItem('userId')
     localStorage.removeItem('studentId')
     localStorage.removeItem('userEmail')
+    localStorage.removeItem('mustChangePassword')
   } catch (e) {}
 }
 
@@ -54,18 +55,19 @@ export function getAuthUser() {
     const name = localStorage.getItem('userName')
     const campus = localStorage.getItem('userCampus')
     const id = localStorage.getItem('userId')
+    const mustChangePassword = localStorage.getItem('mustChangePassword') === 'true'
 
     // If token is missing, corrupted, or expired, wipe stale state
     if (!token || !role || !isTokenValid(token)) {
       if (token || role) {
         clearAuthStorage()
       }
-      return { role: null, name: null, campus: null, id: null, token: null }
+      return { role: null, name: null, campus: null, id: null, token: null, mustChangePassword: false }
     }
 
-    return { role, name, campus, id, token }
+    return { role, name, campus, id, token, mustChangePassword }
   } catch (e) {
-    return { role: null, name: null, campus: null, id: null, token: null }
+    return { role: null, name: null, campus: null, id: null, token: null, mustChangePassword: false }
   }
 }
 

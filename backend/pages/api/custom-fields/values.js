@@ -1,5 +1,6 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders } from '@/lib/auth'
+import { checkRegistrationWindowForStudent } from '@/lib/schedule'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
@@ -123,6 +124,22 @@ export default async function handler(req, res) {
 
     if (!rawStudentId) {
       return res.status(400).json({ message: 'studentId is required' })
+    }
+
+    // Students can only submit registration data while the registration window is open
+    if (userRole === 'student') {
+      const windowClient = await pool.connect()
+      try {
+        const windowCheck = await checkRegistrationWindowForStudent(windowClient, rawStudentId)
+        if (!windowCheck.isOpen) {
+          return res.status(403).json({
+            message: windowCheck.reason || 'Registration is currently closed.',
+            schedule: windowCheck.schedule,
+          })
+        }
+      } finally {
+        windowClient.release()
+      }
     }
 
     if (!values && fieldKey !== undefined) {
