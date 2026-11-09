@@ -1,5 +1,7 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders, hashPassword } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
+import { ONBOARDING_STATUS_IMPORTED } from '@/lib/onboarding'
 import {
   buildTemplate,
   decodeBase64File,
@@ -245,12 +247,34 @@ export default async function handler(req, res) {
 
       // Create a login account only when one does not already exist.
       // ON CONFLICT DO NOTHING guarantees passwords/roles are never overwritten.
-      await client.query(
-        `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status, must_change_password)
-         VALUES ($1, $2, $3, 'student', $4, $5, 'active', true)
-         ON CONFLICT (username) DO NOTHING`,
-        [row.student_id, passwordHash, row.student_name, row.campus || null, row.email || null]
+      const userInsert = await client.query(
+        `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status, must_change_password, onboarding_status)
+         VALUES ($1, $2, $3, 'student', $4, $5, 'active', true, $6)
+         ON CONFLICT (username) DO NOTHING
+         RETURNING id`,
+        [row.student_id, passwordHash, row.student_name, row.campus || null, row.email || null, ONBOARDING_STATUS_IMPORTED]
       )
+
+      // Notify the student of successful account activation (initial credentials sent out-of-band).
+      // The initial password is never included in this or any API response.
+      if (userInsert.rows.length > 0) {
+        try {
+          await createNotification(
+            {
+              recipientId: row.student_id,
+              recipientRole: 'student',
+              campus: row.campus || null,
+              title: 'Account Activated',
+              message: `Your student account has been activated. Your username is your Student ID (${row.student_id}). Your initial password is your Student ID. You must change it on first login.`,
+              type: 'info',
+              link: '/login',
+            },
+            client
+          )
+        } catch (notifErr) {
+          console.error('Activation notification error (non-fatal):', notifErr.message)
+        }
+      }
 
       imported += 1
     }

@@ -1,5 +1,10 @@
 import { pool } from '@/drizzle/client'
 import { signToken, verifyPassword, setCorsHeaders } from '@/lib/auth'
+import {
+  ONBOARDING_STATUS_IMPORTED,
+  ONBOARDING_STATUS_PASSWORD_CHANGE_REQUIRED,
+  deriveOnboardingStatus,
+} from '@/lib/onboarding'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
@@ -23,9 +28,11 @@ export default async function handler(req, res) {
     const client = await pool.connect()
     try {
       const result = await client.query(
-        `SELECT id, username, password_hash, alt_password_hash, full_name, role, campus, email, status, must_change_password
-         FROM app_user
-         WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
+        `SELECT u.id, u.username, u.password_hash, u.alt_password_hash, u.full_name, u.role, u.campus, u.email, u.status, u.must_change_password, u.onboarding_status,
+                s.profile_complete AS "profileComplete"
+         FROM app_user u
+         LEFT JOIN student s ON LOWER(u.username) = LOWER(s.student_id)
+         WHERE LOWER(u.username) = LOWER($1) OR LOWER(u.email) = LOWER($1)`,
         [id]
       )
 
@@ -68,15 +75,6 @@ export default async function handler(req, res) {
 
       if (isInitialPassword && user.role === 'student') {
         // Student logging in with initial password (student ID) must change password
-        const forcedChangeToken = signToken({
-          id: user.id,
-          role: 'student',
-          forcePasswordChange: true,
-          campus: user.campus,
-          name: user.full_name,
-          username: user.username,
-          email: user.email,
-        })
 
         // Persist the must_change_password flag so it survives token expiry
         if (!user.must_change_password) {
@@ -85,6 +83,28 @@ export default async function handler(req, res) {
             [user.id]
           )
         }
+
+        // Transition freshly imported accounts to the password-change-required stage.
+        let onboardingStatus = deriveOnboardingStatus(true, user.profileComplete === true)
+        if (user.onboarding_status === ONBOARDING_STATUS_IMPORTED) {
+          await client.query(
+            'UPDATE app_user SET onboarding_status = $1, updated_at = NOW() WHERE id = $2',
+            [ONBOARDING_STATUS_PASSWORD_CHANGE_REQUIRED, user.id]
+          )
+          onboardingStatus = ONBOARDING_STATUS_PASSWORD_CHANGE_REQUIRED
+        }
+
+        const forcedChangeToken = signToken({
+          id: user.id,
+          role: 'student',
+          forcePasswordChange: true,
+          mustChangePassword: true,
+          onboardingStatus,
+          campus: user.campus,
+          name: user.full_name,
+          username: user.username,
+          email: user.email,
+        })
 
         return res.status(200).json({
           user: {
@@ -95,19 +115,29 @@ export default async function handler(req, res) {
             studentId: user.username,
             username: user.username,
             email: user.email,
+            onboardingStatus,
             forcePasswordChange: true,
             mustChangePassword: true,
+            profileComplete: user.profileComplete === true,
           },
           token: forcedChangeToken,
           requiresPasswordChange: true,
+          onboardingStatus,
         })
       }
 
       console.log(`[AUTH] Login successful: "${user.username}" (role: ${user.role})`)
 
+      const onboardingStatus = deriveOnboardingStatus(
+        user.must_change_password === true,
+        user.profileComplete === true
+      )
+
       const token = signToken({
         id: user.id,
         role: user.role,
+        mustChangePassword: user.must_change_password === true,
+        onboardingStatus,
         campus: user.campus,
         name: user.full_name,
         username: user.username,
@@ -123,6 +153,8 @@ export default async function handler(req, res) {
           studentId: user.username,
           username: user.username,
           email: user.email,
+          onboardingStatus,
+          profileComplete: user.profileComplete === true,
         },
         token,
       })

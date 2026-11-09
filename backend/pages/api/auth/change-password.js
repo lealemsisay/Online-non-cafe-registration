@@ -1,5 +1,11 @@
 import { pool } from '@/drizzle/client'
-import { authorize, verifyPassword, hashPassword, setCorsHeaders } from '@/lib/auth'
+import { authorize, verifyPassword, hashPassword, signToken, setCorsHeaders } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
+import {
+  ONBOARDING_STATUS_IMPORTED,
+  ONBOARDING_STATUS_PASSWORD_CHANGE_REQUIRED,
+  ONBOARDING_STATUS_PROFILE_COMPLETION_REQUIRED,
+} from '@/lib/onboarding'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
@@ -33,7 +39,7 @@ export default async function handler(req, res) {
     const client = await pool.connect()
     try {
       const userRes = await client.query(
-        'SELECT id, username, password_hash, alt_password_hash, role FROM app_user WHERE id = $1',
+        'SELECT id, username, password_hash, alt_password_hash, role, full_name, campus, email, onboarding_status FROM app_user WHERE id = $1',
         [auth.user.id]
       )
 
@@ -55,9 +61,14 @@ export default async function handler(req, res) {
 
       // Hash and update new password
       const newHash = await hashPassword(nextPw)
+      const previousStatus = user.onboarding_status || 'password_change_required'
+      const nextStatus =
+        previousStatus === ONBOARDING_STATUS_IMPORTED || previousStatus === ONBOARDING_STATUS_PASSWORD_CHANGE_REQUIRED
+          ? ONBOARDING_STATUS_PROFILE_COMPLETION_REQUIRED
+          : previousStatus
       await client.query(
-        'UPDATE app_user SET password_hash = $1, alt_password_hash = NULL, must_change_password = false, updated_at = NOW() WHERE id = $2',
-        [newHash, user.id]
+        'UPDATE app_user SET password_hash = $1, alt_password_hash = NULL, must_change_password = false, onboarding_status = $2, updated_at = NOW() WHERE id = $3',
+        [newHash, nextStatus, user.id]
       )
 
       // Audit log
@@ -67,7 +78,43 @@ export default async function handler(req, res) {
         [user.username, user.id]
       )
 
-      return res.status(200).json({ message: 'Password changed successfully' })
+      // Notify the student that the mandatory password change is complete.
+      try {
+        await createNotification(
+          {
+            recipientId: user.id,
+            recipientRole: 'student',
+            campus: user.campus || null,
+            title: 'Password Change Complete',
+            message: 'Your initial password has been changed successfully. Please complete your student profile to access the dashboard.',
+            type: 'success',
+            link: '/profile-completion',
+          },
+          client
+        )
+      } catch (notifErr) {
+        console.error('Password change notification error (non-fatal):', notifErr.message)
+      }
+
+      // Issue a fresh token so the client is no longer carrying the
+      // must-change-password claim and can immediately continue onboarding.
+      const freshToken = signToken({
+        id: user.id,
+        role: user.role,
+        mustChangePassword: false,
+        forcePasswordChange: false,
+        onboardingStatus: nextStatus,
+        campus: user.campus,
+        name: user.full_name,
+        username: user.username,
+        email: user.email,
+      })
+
+      return res.status(200).json({
+        message: 'Password changed successfully',
+        token: freshToken,
+        onboardingStatus: nextStatus,
+      })
     } finally {
       client.release()
     }

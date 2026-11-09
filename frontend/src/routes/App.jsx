@@ -27,6 +27,7 @@ import Settings from '@/pages/super-admin/Settings'
 import LoginPage from '@/pages/auth/Login'
 import StudentRegister from '@/pages/auth/StudentRegister'
 import ChangePasswordPage from '@/pages/auth/ChangePasswordPage'
+import ProfileCompletionPage from '@/pages/auth/ProfileCompletionPage'
 
 // Profile page
 import ProfilePage from '@/pages/profile/ProfilePage'
@@ -45,13 +46,15 @@ const ProtectedRoute = ({ role, children }) => {
       navigate('/login?session=expired', { replace: true })
     } else if (user.mustChangePassword && user.role === 'student') {
       navigate('/change-password', { replace: true })
+    } else if (user.role === 'student' && !user.profileComplete) {
+      navigate('/profile-completion', { replace: true })
     } else if (user.role !== role) {
       if (user.role === 'admin' || user.role === 'viceDean') navigate('/admin', { replace: true })
       else if (user.role === 'dean') navigate('/dean', { replace: true })
       else if (user.role === 'student') navigate('/', { replace: true })
       else navigate('/login', { replace: true })
     }
-  }, [user.role, user.token, user.mustChangePassword, role, navigate])
+  }, [user.role, user.token, user.mustChangePassword, user.profileComplete, role, navigate])
 
   if (!user.role || !user.token || user.role !== role) {
     return null
@@ -66,8 +69,40 @@ const PublicRoute = ({ children }) => {
   if (user.role && user.token) {
     if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
     if (user.role === 'dean') return <Navigate to="/dean" replace />
-    if (user.role === 'student') return <Navigate to="/" replace />
+    if (user.role === 'student') {
+      if (user.mustChangePassword) return <Navigate to="/change-password" replace />
+      if (!user.profileComplete) return <Navigate to="/profile-completion" replace />
+      return <Navigate to="/" replace />
+    }
   }
+  return children
+}
+
+// Onboarding Route Guard: allows an authenticated student to actually reach the
+// change-password / profile-completion pages (unlike PublicRoute, which would
+// redirect them right back to the same onboarding URL and cause a blank screen).
+const OnboardingRoute = ({ step, children }) => {
+  const user = getAuthUser()
+
+  if (!user.role || !user.token) return <Navigate to="/login" replace />
+
+  if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
+  if (user.role === 'dean') return <Navigate to="/dean" replace />
+
+  if (user.role === 'student') {
+    if (step === 'password') {
+      // Password already changed -> move on to profile completion or dashboard.
+      if (!user.mustChangePassword) {
+        return <Navigate to={user.profileComplete ? '/' : '/profile-completion'} replace />
+      }
+    } else if (step === 'profile') {
+      // Must finish the password change first.
+      if (user.mustChangePassword) return <Navigate to="/change-password" replace />
+      // Already complete -> dashboard.
+      if (user.profileComplete) return <Navigate to="/" replace />
+    }
+  }
+
   return children
 }
 
@@ -77,7 +112,11 @@ const RootRoute = () => {
   if (!user.role || !user.token) return <Navigate to="/login" replace />
   if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
   if (user.role === 'dean') return <Navigate to="/dean" replace />
-  if (user.role === 'student') return <StudentPortal />
+  if (user.role === 'student') {
+    if (user.mustChangePassword) return <Navigate to="/change-password" replace />
+    if (!user.profileComplete) return <Navigate to="/profile-completion" replace />
+    return <StudentPortal />
+  }
   return <Navigate to="/login" replace />
 }
 
@@ -152,9 +191,17 @@ const App = () => {
           <Route
             path="/change-password"
             element={
-              <PublicRoute>
+              <OnboardingRoute step="password">
                 <ChangePasswordPage />
-              </PublicRoute>
+              </OnboardingRoute>
+            }
+          />
+          <Route
+            path="/profile-completion"
+            element={
+              <OnboardingRoute step="profile">
+                <ProfileCompletionPage />
+              </OnboardingRoute>
             }
           />
 

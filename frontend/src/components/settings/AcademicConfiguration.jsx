@@ -373,6 +373,13 @@ export const AcademicYearManagement = ({ onChanged }) => {
   const [endDate, setEndDate] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
 
+  // Edit modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [editYear, setEditYear] = useState('')
+  const [editStartDate, setEditStartDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
+  const [editTargetId, setEditTargetId] = useState(null)
+
   const loadYears = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -475,6 +482,60 @@ export const AcademicYearManagement = ({ onChanged }) => {
       }
     } catch (e) {
       setError('Network error activating academic year.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleOpenEdit = (item) => {
+    setEditTargetId(item.id)
+    setEditYear(item.year || '')
+    setEditStartDate(item.startDate ? new Date(item.startDate).toISOString().slice(0, 10) : '')
+    setEditEndDate(item.endDate ? new Date(item.endDate).toISOString().slice(0, 10) : '')
+    setIsEditModalOpen(true)
+  }
+
+  const handleEditSave = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setSuccess(null)
+
+    const trimmed = editYear.trim()
+    if (!trimmed) {
+      setError('Please provide a valid academic year.')
+      return
+    }
+    if (editStartDate && editEndDate && new Date(editEndDate) < new Date(editStartDate)) {
+      setError('Academic year end date cannot be earlier than the start date.')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const res = await fetch('/api/academic-years', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          id: editTargetId,
+          year: trimmed,
+          startDate: editStartDate || null,
+          endDate: editEndDate || null,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSuccess(`Academic year '${trimmed}' updated successfully.`)
+        setIsEditModalOpen(false)
+        await loadYears()
+        notifyChanged()
+      } else {
+        setError(data.message || 'Failed to update academic year.')
+      }
+    } catch (e) {
+      setError('Network error updating academic year.')
     } finally {
       setIsSaving(false)
     }
@@ -626,6 +687,12 @@ export const AcademicYearManagement = ({ onChanged }) => {
                         </button>
                       )}
                       <button
+                        onClick={() => handleOpenEdit(item)}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold border border-slate-300 text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      <button
                         onClick={() => setDeleteTarget(item)}
                         className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                         title={`Remove ${item.year}`}
@@ -653,6 +720,83 @@ export const AcademicYearManagement = ({ onChanged }) => {
         isLoading={isSaving}
         danger
       />
+
+      {/* EDIT ACADEMIC YEAR MODAL */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 relative">
+            <button
+              onClick={() => setIsEditModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 font-bold text-lg cursor-pointer"
+            >
+              ✕
+            </button>
+            <div className="flex items-center gap-2 mb-4">
+              <Icon name="clock" className="w-5 h-5 text-dillaGreen" />
+              <h3 className="font-bold text-dillaDarkGreen text-sm">Edit Academic Year</h3>
+            </div>
+
+            <form onSubmit={handleEditSave} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Academic Year
+                </label>
+                <Input
+                  placeholder="e.g. 2025/2026"
+                  value={editYear}
+                  onChange={(e) => setEditYear(e.target.value)}
+                  required
+                  className="text-slate-900 text-xs h-10"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editStartDate}
+                    onChange={(e) => setEditStartDate(e.target.value)}
+                    className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editEndDate}
+                    onChange={(e) => setEditEndDate(e.target.value)}
+                    className="w-full h-10 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-dillaGreen/30 focus:border-dillaGreen"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="text-xs px-4 py-2"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSaving}
+                  variant="primary"
+                  className="text-xs px-6 py-2.5 font-bold shadow-md"
+                >
+                  {isSaving ? 'Saving...' : 'Save Year'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

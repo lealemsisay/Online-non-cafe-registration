@@ -16,6 +16,7 @@
     "test:phase2": "node scripts/verify-phase2-flows.mjs",
     "test:phase2-builder": "node scripts/verify-phase2-builder.mjs",
     "test:phase3": "node scripts/verify-phase3-flows.mjs",
+    "test:phase3-onboarding": "node scripts/verify-phase3-onboarding.mjs",
     "test:registration": "node scripts/verify-phase3-registration.mjs"
   },
   "keywords": [],

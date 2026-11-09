@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Icon from '@/components/icons/Icon'
 import { Input, Button } from '@/components/forms'
 import ActionMenu from '@/components/common/ActionMenu'
@@ -20,21 +20,36 @@ const FIELD_TYPE_OPTIONS = [
   { value: 'academic_year', label: 'Academic Year Selector', desc: 'Active calendar years list', icon: 'clock' },
 ]
 
-const STANDARD_FIELDS = [
-  { key: 'photoUrl', label: 'Student Passport Photo', type: 'image', required: true, desc: '3:4 aspect ratio passport-size photo' },
-  { key: 'studentId', label: 'Student Identification Number', type: 'text', required: true, desc: 'Unique admission number (e.g. DUC2023-001)' },
-  { key: 'fullName', label: 'Full Student Name', type: 'text', required: true, desc: 'First, middle, and last name' },
-  { key: 'gender', label: 'Gender', type: 'select', required: true, desc: 'Institutional gender classification' },
-  { key: 'campus', label: 'Enrolled Campus', type: 'select', required: true, desc: 'Assigned University campus' },
-  { key: 'department', label: 'Department / Discipline', type: 'department', required: true, desc: 'Academic department' },
-  { key: 'program', label: 'Program Type', type: 'select', required: true, desc: 'Regular Degree, Continuing, or Postgraduate' },
-  { key: 'yearOfStudy', label: 'Year of Study', type: 'select', required: true, desc: 'Academic level (Year 1 to Year 5)' },
-  { key: 'academicYear', label: 'Academic Year', type: 'academic_year', required: true, desc: 'Current academic calendar' },
-  { key: 'phone', label: 'Phone Number', type: 'phone', required: false, desc: 'Student mobile contact' },
-  { key: 'email', label: 'Email Address', type: 'email', required: false, desc: 'Institutional student email' },
-  { key: 'pdfFileName', label: 'PDF Registration Slip', type: 'file', required: true, desc: 'Official registrar verification document' },
-  { key: 'isNonCafeteria', label: 'Non-Cafeteria Subsidy Declaration', type: 'checkbox', required: true, desc: 'Cost-sharing legal declaration' },
-]
+// Protected field keys that cannot be deactivated or made optional (system-critical)
+const PROTECTED_FIELD_KEYS = ['studentid', 'fullname']
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+const normalizeField = (f) => ({
+  id: f.id || f.field_key,
+  fieldKey: f.fieldKey || f.field_key,
+  label: f.label,
+  fieldType: f.fieldType || f.field_type,
+  placeholder: f.placeholder || '',
+  helpText: f.helpText || f.help_text || '',
+  options: Array.isArray(f.options) ? f.options : (f.options ? JSON.parse(f.options) : []),
+  isRequired: f.isRequired !== undefined ? f.isRequired : f.is_required !== undefined ? f.is_required : true,
+  isActive: f.isActive !== undefined ? f.isActive : f.is_active !== undefined ? f.is_active : true,
+  isStudentEditable: f.isStudentEditable !== undefined ? f.isStudentEditable : f.is_student_editable !== undefined ? f.is_student_editable : true,
+  visibleStudent: f.visibleStudent !== undefined ? f.visibleStudent : f.visible_student !== undefined ? f.visible_student : true,
+  visibleDean: f.visibleDean !== undefined ? f.visibleDean : f.visible_dean !== undefined ? f.visible_dean : true,
+  visibleAdmin: f.visibleAdmin !== undefined ? f.visibleAdmin : f.visible_admin !== undefined ? f.visible_admin : true,
+  displayOrder: f.displayOrder !== undefined ? f.displayOrder : f.display_order !== undefined ? f.display_order : 0,
+  campus: f.campus || null,
+  appliesTo: f.appliesTo || f.applies_to || 'all',
+  validationRules: f.validationRules || f.validation_rules || {},
+  isBuiltIn: f.isBuiltIn || false,
+  isProtected: f.isProtected || f.is_protected || false,
+  responseCount: f.responseCount || 0,
+})
 
 const RegistrationFormBuilder = ({
   userRole = 'admin',
@@ -46,6 +61,7 @@ const RegistrationFormBuilder = ({
   onFieldChanged,
 }) => {
   const [fields, setFields] = useState([])
+  const [builtinFields, setBuiltinFields] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
@@ -53,7 +69,7 @@ const RegistrationFormBuilder = ({
   // Sub-tabs: 'fields', 'standard', 'preview'
   const [activeSubTab, setActiveSubTab] = useState('fields')
 
-  // Modal State for Add / Edit
+  // Modal State for Add / Edit (custom fields)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingFieldId, setEditingFieldId] = useState(null)
   const [formData, setFormData] = useState({
@@ -72,6 +88,24 @@ const RegistrationFormBuilder = ({
     displayOrder: 0,
     campus: 'all',
     appliesTo: 'all',
+  })
+
+  // Modal State for editing built-in fields
+  const [isBuiltInModalOpen, setIsBuiltInModalOpen] = useState(false)
+  const [editingBuiltInKey, setEditingBuiltInKey] = useState(null)
+  const [builtinFormData, setBuiltinFormData] = useState({
+    fieldKey: '',
+    label: '',
+    description: '',
+    fieldType: 'text',
+    isRequired: true,
+    isActive: true,
+    displayOrder: 0,
+    appliesTo: 'all',
+    visibleStudent: true,
+    visibleDean: true,
+    visibleAdmin: true,
+    validationRules: '{}',
   })
 
   // Submissions Viewer Modal State
@@ -95,15 +129,15 @@ const RegistrationFormBuilder = ({
   const loadCustomFields = async () => {
     setLoading(true)
     setError(null)
-    const token = localStorage.getItem('token')
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const headers = getAuthHeaders()
 
     try {
       const res = await fetch('/api/custom-fields?all=true', { headers })
       if (res.ok) {
         const data = await res.json()
-        setFields(data.customFields || [])
-        if (onFieldChanged) onFieldChanged(data.customFields || [])
+        const normalized = (data.customFields || []).map(normalizeField)
+        setFields(normalized)
+        if (onFieldChanged) onFieldChanged(normalized)
       } else {
         const d = await res.json()
         setError(d.message || 'Failed to load custom registration fields')
@@ -116,8 +150,26 @@ const RegistrationFormBuilder = ({
     }
   }
 
+  const loadBuiltInFields = async () => {
+    const headers = getAuthHeaders()
+    try {
+      const res = await fetch('/api/builtin-fields', { headers })
+      if (res.ok) {
+        const data = await res.json()
+        const normalized = (data.builtinFields || []).map(normalizeField)
+        setBuiltinFields(normalized)
+      } else {
+        const d = await res.json()
+        console.error('Failed to load built-in fields:', d.message)
+      }
+    } catch (e) {
+      console.error('Network error fetching built-in fields:', e)
+    }
+  }
+
   useEffect(() => {
     loadCustomFields()
+    loadBuiltInFields()
   }, [])
 
   const handleOpenAddModal = () => {
@@ -142,6 +194,24 @@ const RegistrationFormBuilder = ({
     setIsModalOpen(true)
   }
 
+  const handleOpenBuiltInEditModal = (field) => {
+    setEditingBuiltInKey(field.fieldKey)
+    setBuiltinFormData({
+      fieldKey: field.fieldKey,
+      label: field.label || '',
+      description: field.description || '',
+      fieldType: field.fieldType || 'text',
+      isRequired: Boolean(field.isRequired),
+      isActive: Boolean(field.isActive),
+      displayOrder: field.displayOrder !== undefined ? field.displayOrder : 0,
+      appliesTo: field.appliesTo || 'all',
+      visibleStudent: field.visibleStudent !== false,
+      visibleDean: field.visibleDean !== false,
+      visibleAdmin: field.visibleAdmin !== false,
+      validationRules: field.validationRules ? JSON.stringify(field.validationRules) : '{}',
+    })
+    setIsBuiltInModalOpen(true)
+  }
 
   const handleOpenSubmissionsModal = async (field) => {
     setSubmissionsModal({
@@ -151,8 +221,7 @@ const RegistrationFormBuilder = ({
       loading: true,
       error: null,
     })
-    const token = localStorage.getItem('token')
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const headers = getAuthHeaders()
 
     try {
       const res = await fetch(`/api/custom-fields/submissions?fieldId=${encodeURIComponent(field.id)}`, { headers })
@@ -209,7 +278,6 @@ const RegistrationFormBuilder = ({
   const handleLabelChange = (val) => {
     setFormData((prev) => {
       const updates = { ...prev, label: val }
-      // Auto-generate field key only on new fields if key wasn't manually edited
       if (!editingFieldId && (!prev.fieldKey || prev.fieldKey === prev.label.toLowerCase().replace(/[^a-z0-9_]/g, '_'))) {
         updates.fieldKey = val.toLowerCase().replace(/[^a-z0-9_]/g, '_')
       }
@@ -243,10 +311,9 @@ const RegistrationFormBuilder = ({
       }
     }
 
-    const token = localStorage.getItem('token')
     const headers = {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...getAuthHeaders(),
     }
 
     const payload = {
@@ -301,7 +368,72 @@ const RegistrationFormBuilder = ({
     }
   }
 
+  const handleSaveBuiltInField = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setSuccessMessage(null)
+
+    if (!builtinFormData.label.trim()) {
+      setError('Field display label is required')
+      return
+    }
+
+    const isProtected = PROTECTED_FIELD_KEYS.includes(builtinFormData.fieldKey.toLowerCase())
+    if (isProtected && !builtinFormData.isActive) {
+      setError(`The "${builtinFormData.fieldKey}" field is protected and cannot be deactivated.`)
+      return
+    }
+    if (isProtected && !builtinFormData.isRequired) {
+      setError(`The "${builtinFormData.fieldKey}" field is protected and must remain required.`)
+      return
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    }
+
+    const payload = {
+      fieldKey: builtinFormData.fieldKey,
+      label: builtinFormData.label.trim(),
+      description: builtinFormData.description.trim(),
+      fieldType: builtinFormData.fieldType,
+      isRequired: builtinFormData.isRequired,
+      isActive: builtinFormData.isActive,
+      displayOrder: parseInt(builtinFormData.displayOrder) || 0,
+      appliesTo: builtinFormData.appliesTo || 'all',
+      visibleStudent: builtinFormData.visibleStudent,
+      visibleDean: builtinFormData.visibleDean,
+      visibleAdmin: builtinFormData.visibleAdmin,
+      validationRules: builtinFormData.validationRules ? JSON.parse(builtinFormData.validationRules) : {},
+    }
+
+    try {
+      const res = await fetch('/api/builtin-fields', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSuccessMessage(`Built-in field "${builtinFormData.label}" updated successfully.`)
+        setIsBuiltInModalOpen(false)
+        loadBuiltInFields()
+      } else {
+        setError(data.message || 'Failed to save built-in field.')
+      }
+    } catch (err) {
+      console.error(err)
+      setError('Network error saving built-in field.')
+    }
+  }
+
   const handleToggleActive = async (field) => {
+    const isProtected = PROTECTED_FIELD_KEYS.includes(String(field.fieldKey || field.id).toLowerCase())
+    if (isProtected && field.isActive) {
+      setError(`The "${field.label}" field is protected and cannot be deactivated.`)
+      return
+    }
     const token = localStorage.getItem('token')
     try {
       const res = await fetch('/api/custom-fields', {
@@ -320,6 +452,36 @@ const RegistrationFormBuilder = ({
           prev.map((f) => (f.id === field.id ? { ...f, isActive: !f.isActive } : f))
         )
         setSuccessMessage(`Field "${field.label}" ${!field.isActive ? 'activated' : 'deactivated'}.`)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleToggleBuiltInActive = async (field) => {
+    const isProtected = PROTECTED_FIELD_KEYS.includes(field.fieldKey.toLowerCase())
+    if (isProtected && field.isActive) {
+      setError(`The "${field.label}" field is protected and cannot be deactivated.`)
+      return
+    }
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    }
+    try {
+      const res = await fetch('/api/builtin-fields', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          fieldKey: field.fieldKey,
+          isActive: !field.isActive,
+        }),
+      })
+      if (res.ok) {
+        setBuiltinFields((prev) =>
+          prev.map((f) => (f.fieldKey === field.fieldKey ? { ...f, isActive: !f.isActive } : f))
+        )
+        setSuccessMessage(`Built-in field "${field.label}" ${!field.isActive ? 'activated' : 'deactivated'}.`)
       }
     } catch (e) {
       console.error(e)
@@ -395,6 +557,45 @@ const RegistrationFormBuilder = ({
     }
   }
 
+  const handleMoveBuiltInOrder = async (field, direction) => {
+    const currentOrder = field.displayOrder !== undefined ? field.displayOrder : 0
+    const newOrder = direction === 'up' ? Math.max(0, currentOrder - 1) : currentOrder + 1
+    const headers = {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    }
+
+    try {
+      const res = await fetch('/api/builtin-fields', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          fieldKey: field.fieldKey,
+          displayOrder: newOrder,
+        }),
+      })
+      if (res.ok) {
+        loadBuiltInFields()
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  // Combine built-in and custom fields for preview, sorted by display_order
+  const allConfiguredFields = useMemo(() => {
+    const combined = [
+      ...builtinFields.map((f) => ({ ...f, isBuiltIn: true })),
+      ...fields.map((f) => ({ ...f, isBuiltIn: false })),
+    ]
+    return combined.sort((a, b) => a.displayOrder - b.displayOrder)
+  }, [builtinFields, fields])
+
+  // Fields visible to students for preview
+  const studentVisibleFields = allConfiguredFields.filter(
+    (f) => f.isActive && f.visibleStudent !== false
+  )
+
   return (
     <div className="space-y-6">
       {/* Sub-tab Navigation */}
@@ -412,48 +613,46 @@ const RegistrationFormBuilder = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200">
-            <button
-              onClick={() => setActiveSubTab('fields')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeSubTab === 'fields'
-                  ? 'bg-white text-dillaDarkGreen shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Custom Fields ({fields.length})
-            </button>
-            <button
-              onClick={() => setActiveSubTab('standard')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeSubTab === 'standard'
-                  ? 'bg-white text-dillaDarkGreen shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Standard Fields ({STANDARD_FIELDS.length})
-            </button>
-            <button
-              onClick={() => setActiveSubTab('preview')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeSubTab === 'preview'
-                  ? 'bg-white text-dillaDarkGreen shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Live Student Preview
-            </button>
-          </div>
-
-          <Button
-            onClick={handleOpenAddModal}
-            variant="primary"
-            className="text-xs px-3.5 py-1.5 font-bold shadow-sm flex items-center gap-1.5"
+          <button
+            onClick={() => setActiveSubTab('fields')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'fields'
+                ? 'bg-white text-dillaDarkGreen shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <Icon name="plus" className="w-4 h-4" />
-            <span>Add Field</span>
-          </Button>
+            Custom Fields ({fields.length})
+          </button>
+          <button
+            onClick={() => setActiveSubTab('standard')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'standard'
+                ? 'bg-white text-dillaDarkGreen shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Built-in Fields ({builtinFields.length})
+          </button>
+          <button
+            onClick={() => setActiveSubTab('preview')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'preview'
+                ? 'bg-white text-dillaDarkGreen shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Live Student Preview
+          </button>
         </div>
+
+        <Button
+          onClick={handleOpenAddModal}
+          variant="primary"
+          className="text-xs px-3.5 py-1.5 font-bold shadow-sm flex items-center gap-1.5"
+        >
+          <Icon name="plus" className="w-4 h-4" />
+          <span>Add Custom Field</span>
+        </Button>
       </div>
 
       {/* Notifications */}
@@ -513,14 +712,13 @@ const RegistrationFormBuilder = ({
                       <Icon name="sliders-horizontal" className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                       <p className="font-semibold text-slate-600 text-sm">No custom registration fields defined yet</p>
                       <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                        Click "Add Field" above to add new fields such as "Section", "Advisor Name", or campus-specific requirements.
+                        Click "Add Custom Field" above to add new fields such as "Section", "Advisor Name", or campus-specific requirements.
                       </p>
                     </td>
                   </tr>
                 ) : (
                   fields.map((field) => (
                     <tr key={field.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Reordering Controls */}
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
@@ -543,7 +741,6 @@ const RegistrationFormBuilder = ({
                         </div>
                       </td>
 
-                      {/* Label & Key */}
                       <td className="py-3 px-4">
                         <p className="font-bold text-slate-900">{field.label}</p>
                         <p className="font-mono text-[11px] text-slate-500">{field.fieldKey}</p>
@@ -554,7 +751,6 @@ const RegistrationFormBuilder = ({
                         )}
                       </td>
 
-                      {/* Input Type */}
                       <td className="py-3 px-3">
                         <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200 text-[11px] inline-flex items-center gap-1">
                           {field.fieldType}
@@ -566,7 +762,6 @@ const RegistrationFormBuilder = ({
                         )}
                       </td>
 
-                      {/* Campus Scope */}
                       <td className="py-3 px-3">
                         {field.campus ? (
                           <span className="font-bold text-dillaGreen bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[10px]">
@@ -579,7 +774,6 @@ const RegistrationFormBuilder = ({
                         )}
                       </td>
 
-                      {/* Applicability */}
                       <td className="py-3 px-3">
                         <span
                           className={`px-2 py-0.5 rounded font-bold text-[10px] border ${
@@ -594,7 +788,6 @@ const RegistrationFormBuilder = ({
                         </span>
                       </td>
 
-                      {/* Governance Badges */}
                       <td className="py-3 px-3">
                         <div className="flex flex-col gap-1 items-start">
                           {field.isRequired ? (
@@ -606,7 +799,6 @@ const RegistrationFormBuilder = ({
                               Optional
                             </span>
                           )}
-
                           {field.isStudentEditable === false ? (
                             <span className="text-amber-800 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[9px]">
                               Read-Only
@@ -619,7 +811,6 @@ const RegistrationFormBuilder = ({
                         </div>
                       </td>
 
-                      {/* Role Visibility */}
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5 text-slate-500" title="Visible to: Student, Dean, Admin">
                           <span className={`text-[10px] px-1 py-0.5 rounded font-mono font-bold ${field.visibleStudent !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-400 line-through'}`}>
@@ -634,7 +825,6 @@ const RegistrationFormBuilder = ({
                         </div>
                       </td>
 
-                      {/* Student Responses Count */}
                       <td className="py-3 px-3">
                         {field.responseCount > 0 ? (
                           <button
@@ -651,7 +841,6 @@ const RegistrationFormBuilder = ({
                         )}
                       </td>
 
-                      {/* Status Toggle */}
                       <td className="py-3 px-3">
                         <button
                           onClick={() => handleToggleActive(field)}
@@ -665,7 +854,6 @@ const RegistrationFormBuilder = ({
                         </button>
                       </td>
 
-                      {/* Actions */}
                       <td className="py-3 px-3 text-right">
                         <ActionMenu
                           items={[
@@ -703,42 +891,79 @@ const RegistrationFormBuilder = ({
         </div>
       )}
 
-      {/* SUB-TAB 2: STANDARD PREDEFINED FIELDS OVERVIEW */}
+      {/* SUB-TAB 2: BUILT-IN FIELDS (Editable Core Registration Fields) */}
       {activeSubTab === 'standard' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
           <div>
             <h3 className="text-sm font-bold text-dillaDarkGreen uppercase tracking-wider">
-              Core Registration System Fields
+              Core Registration System Fields (Built-in)
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              These fundamental academic fields form the core university registration contract and are dynamically supplemented by your custom fields above.
+              These fundamental academic fields form the core university registration contract. Display labels, required status,
+              visibility, and display order are configurable. Internal field keys are stable and never change.
+              Protected fields ({PROTECTED_FIELD_KEYS.join(', ')}) cannot be deactivated or made optional.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {STANDARD_FIELDS.map((sf) => (
-              <div key={sf.key} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-900 text-xs">{sf.label}</span>
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">
-                      {sf.type}
-                    </span>
+            {builtinFields.map((sf) => {
+              const isProtected = PROTECTED_FIELD_KEYS.includes(sf.fieldKey.toLowerCase())
+              return (
+                <div key={sf.fieldKey} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between group">
+                  <div className="p-2">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="font-bold text-slate-900 text-xs">{sf.label}</span>
+                      <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">
+                        {sf.fieldType}
+                      </span>
+                      {isProtected && (
+                        <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
+                          Protected
+                        </span>
+                      )}
+                    </div>
+                    <p className="font-mono text-[10px] text-slate-400 mt-0.5">{sf.fieldKey}</p>
+                    {sf.description && (
+                      <p className="text-[11px] text-slate-500 mt-1">{sf.description}</p>
+                    )}
+                    <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+                      <span className={sf.isRequired ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'} flex items-center gap-1>
+                        {sf.isRequired ? <Icon name="circle" className="w-3 h-3 text-rose-600" /> : <Icon name="minus" className="w-3 h-3 text-emerald-600" />}
+                        {sf.isRequired ? 'Mandatory' : 'Optional'}
+                      </span>
+                      <span className={sf.isActive ? 'text-emerald-700 font-bold' : 'text-slate-500 font-semibold'} flex items-center gap-1>
+                        {sf.isActive ? <Icon name="check" className="w-3 h-3 text-emerald-600" /> : <Icon name="x" className="w-3 h-3 text-slate-500" />}
+                        {sf.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
                   </div>
-                  <p className="font-mono text-[10px] text-slate-400 mt-0.5">{sf.key}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">{sf.desc}</p>
+                  <div className="pt-2 mt-2 border-t border-slate-200 flex items-center justify-between text-[10px] p-2">
+                    <button
+                      onClick={() => handleOpenBuiltInEditModal(sf)}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold border border-slate-300 text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    {isProtected && sf.isActive ? (
+                      <span className="px-2 py-1 rounded-lg text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100">
+                        Protected
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleToggleBuiltInActive(sf)}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                          sf.isActive
+                            ? 'border-slate-300 text-slate-700 bg-slate-50 hover:bg-slate-100'
+                            : 'border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {sf.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="pt-2 mt-2 border-t border-slate-200 flex items-center justify-between text-[10px]">
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
-                    <Icon name="check" className="w-3 h-3 text-emerald-600" />
-                    Built-in
-                  </span>
-                  <span className="text-slate-500 font-semibold">
-                    {sf.required ? 'Mandatory' : 'Optional'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -758,94 +983,117 @@ const RegistrationFormBuilder = ({
             </span>
           </div>
 
+          <p className="text-xs text-slate-500 max-w-md">
+            This preview reflects the actual field configuration from both built-in fields and custom fields.
+            Changes to labels, required status, visibility, and field order are immediately reflected here.
+          </p>
+
           <div className="p-5 bg-slate-50 rounded-xl border border-slate-300 space-y-6 max-w-3xl mx-auto">
-            {/* Standard Identification Preview */}
+            {/* Student Identification Section */}
             <div>
               <p className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider mb-3">
-                Section 2: Student Identification (Standard)
+                Section 1: Student Identification
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Student ID *</label>
-                  <input disabled value="DUC2023-001" className="w-full h-9 px-3 bg-white border border-slate-300 rounded-lg text-slate-500" />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Full Student Name *</label>
-                  <input disabled value="Student Demo Name" className="w-full h-9 px-3 bg-white border border-slate-300 rounded-lg text-slate-500" />
-                </div>
+                {studentVisibleFields
+                  .filter((f) => ['studentId', 'fullName'].includes(f.fieldKey))
+                  .map((field) => (
+                    <div key={field.fieldKey} className={field.fieldType === 'textarea' ? 'sm:col-span-2' : ''}>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                      </label>
+                      {field.helpText && (
+                        <p className="text-[10px] text-slate-400 mb-1">{field.helpText}</p>
+                      )}
+                      <input
+                        disabled
+                        type={field.fieldType === 'select' ? 'text' : field.fieldType}
+                        placeholder={`Enter ${field.label}...`}
+                        className="w-full h-9 px-3 bg-white border border-slate-300 rounded-lg text-slate-500"
+                      />
+                    </div>
+                  ))}
+                {studentVisibleFields.filter((f) => !['studentId', 'fullName'].includes(f.fieldKey)).length === 0 && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-slate-400 italic p-3 bg-white rounded-lg border border-slate-200 text-center">
+                      No identification fields configured.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Dynamic Custom Fields Section Preview */}
+            {/* Additional Fields Section */}
             <div className="pt-4 border-t border-slate-200">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
-                  Section 4: Additional Registered Fields (Admin Defined)
+                  Section 2: Additional Registration Fields
                 </p>
                 <span className="text-[11px] font-bold text-dillaGreen">
-                  {fields.filter((f) => f.isActive && f.visibleStudent !== false).length} active dynamic field(s)
+                  {studentVisibleFields.length} active field(s)
                 </span>
               </div>
 
-              {fields.filter((f) => f.isActive && f.visibleStudent !== false).length === 0 ? (
+              {studentVisibleFields.length === 0 ? (
                 <p className="text-xs text-slate-400 italic p-4 bg-white rounded-lg border border-slate-200 text-center">
-                  No custom fields are currently active. Add fields above to display them here.
+                  No fields are currently active for students.
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {fields
-                    .filter((f) => f.isActive && f.visibleStudent !== false)
-                    .map((field) => (
-                      <div key={field.id} className={field.fieldType === 'textarea' ? 'sm:col-span-2' : ''}>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                          {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                  {studentVisibleFields.map((field) => (
+                    <div key={field.id || field.fieldKey} className={field.fieldType === 'textarea' ? 'sm:col-span-2' : ''}>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        {field.label} {field.isRequired && <span className="text-rose-600">*</span>}
+                      </label>
+                      {field.helpText && (
+                        <p className="text-[10px] text-slate-400 mb-1">{field.helpText}</p>
+                      )}
+
+                      {field.fieldType === 'textarea' ? (
+                        <textarea
+                          disabled
+                          rows={3}
+                          placeholder={`Enter ${field.label}...`}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-xs text-slate-400"
+                        />
+                      ) : field.fieldType === 'select' ? (
+                        <select disabled className="w-full h-9 px-3 border border-slate-300 rounded-lg bg-white text-xs text-slate-500">
+                          <option>-- Select {field.label} --</option>
+                          {(field.options || []).map((o) => (
+                            <option key={o}>{o}</option>
+                          ))}
+                        </select>
+                      ) : field.fieldType === 'radio' ? (
+                        <div className="flex flex-wrap gap-3 pt-1">
+                          {(field.options || []).map((o) => (
+                            <label key={o} className="flex items-center gap-1.5 text-xs text-slate-700">
+                              <input type="radio" disabled name={field.fieldKey} />
+                              <span>{o}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : field.fieldType === 'checkbox' ? (
+                        <label className="flex items-center gap-2 pt-1 text-xs font-bold text-slate-700">
+                          <input type="checkbox" disabled className="rounded text-dillaGreen w-4 h-4" />
+                          <span>Confirm {field.label}</span>
                         </label>
-                        {field.placeholder && (
-                          <p className="text-[10px] text-slate-400 mb-1">{field.placeholder}</p>
-                        )}
+                      ) : (
+                        <input
+                          disabled
+                          type={field.fieldType}
+                          placeholder={`Enter ${field.label}...`}
+                          className="w-full h-9 px-3 border border-slate-300 rounded-lg bg-white text-xs text-slate-400"
+                        />
+                      )}
 
-                        {field.fieldType === 'textarea' ? (
-                          <textarea
-                            disabled
-                            rows={3}
-                            placeholder={`Enter ${field.label}...`}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-xs text-slate-400"
-                          />
-                        ) : field.fieldType === 'select' ? (
-                          <select disabled className="w-full h-9 px-3 border border-slate-300 rounded-lg bg-white text-xs text-slate-500">
-                            <option>-- Select {field.label} --</option>
-                            {(field.options || []).map((o) => (
-                              <option key={o}>{o}</option>
-                            ))}
-                          </select>
-                        ) : field.fieldType === 'radio' ? (
-                          <div className="flex flex-wrap gap-3 pt-1">
-                            {(field.options || []).map((o) => (
-                              <label key={o} className="flex items-center gap-1.5 text-xs text-slate-700">
-                                <input type="radio" disabled name={field.fieldKey} />
-                                <span>{o}</span>
-                              </label>
-                            ))}
-                          </div>
-                        ) : field.fieldType === 'checkbox' ? (
-                          <label className="flex items-center gap-2 pt-1 text-xs font-bold text-slate-700">
-                            <input type="checkbox" disabled className="rounded text-dillaGreen w-4 h-4" />
-                            <span>Confirm {field.label}</span>
-                          </label>
-                        ) : (
-                          <input
-                            disabled
-                            type={field.fieldType}
-                            placeholder={`Enter ${field.label}...`}
-                            className="w-full h-9 px-3 border border-slate-300 rounded-lg bg-white text-xs text-slate-400"
-                          />
-                        )}
-
-                        {field.helpText && (
-                          <p className="text-[10px] text-slate-500 mt-1 italic">{field.helpText}</p>
-                        )}
-                      </div>
-                    ))}
+                      {field.fieldType === 'image' && (
+                        <div className="mt-2 p-2 bg-slate-100 rounded border border-slate-200 text-xs text-slate-500 text-center">
+                          <Icon name="image" className="w-4 h-4 mx-auto mb-1 text-slate-400" />
+                          <p>Passport photo upload area</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -853,7 +1101,7 @@ const RegistrationFormBuilder = ({
         </div>
       )}
 
-      {/* ADD / EDIT FIELD MODAL */}
+      {/* ADD / EDIT CUSTOM FIELD MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-2xs animate-in fade-in duration-150">
           <div
@@ -969,7 +1217,6 @@ const RegistrationFormBuilder = ({
                 </p>
               </div>
 
-              {/* Options for dropdown, radio, or selectors */}
               {['select', 'radio', 'checkbox', 'department', 'batch'].includes(formData.fieldType) && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -1044,7 +1291,6 @@ const RegistrationFormBuilder = ({
                 />
               </div>
 
-              {/* Toggles & Permissions Box */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                 <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Governance & Access Rules
@@ -1127,6 +1373,218 @@ const RegistrationFormBuilder = ({
                   className="text-xs px-5 py-2 font-bold shadow-md"
                 >
                   {editingFieldId ? 'Save Changes' : 'Create Registration Field'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT BUILT-IN FIELD MODAL */}
+      {isBuiltInModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-2xs animate-in fade-in duration-150">
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col relative overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="bg-gradient-to-r from-dillaDarkGreen to-dillaGreen text-white p-5 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <Icon name="sliders-horizontal" className="w-5 h-5 text-dillaGold" />
+                <h3 className="font-bold text-base">
+                  Edit Built-in Field: {builtinFormData.label}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsBuiltInModalOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+              >
+                <Icon name="x" className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBuiltInField} className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 mb-2">
+                <p className="text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1">
+                  Internal Key: {builtinFormData.fieldKey}
+                </p>
+                <p className="text-[10px] text-amber-700">
+                  This key is stored in the database and used for authentication and data integrity. It cannot be changed.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Display Label *
+                </label>
+                <Input
+                  placeholder="e.g. Student ID Number"
+                  value={builtinFormData.label}
+                  onChange={(e) => setBuiltinFormData((p) => ({ ...p, label: e.target.value }))}
+                  required
+                  className="text-slate-900 text-xs h-9"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Description
+                </label>
+                <Input
+                  placeholder="e.g. Unique admission number for verification"
+                  value={builtinFormData.description}
+                  onChange={(e) => setBuiltinFormData((p) => ({ ...p, description: e.target.value }))}
+                  className="text-slate-900 text-xs h-9"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Input Type
+                </label>
+                <select
+                  value={builtinFormData.fieldType}
+                  onChange={(e) => setBuiltinFormData((p) => ({ ...p, fieldType: e.target.value }))}
+                  disabled
+                  className="w-full h-9 px-3 border border-slate-300 rounded-lg text-slate-900 bg-slate-100 text-xs"
+                >
+                  {FIELD_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-0.5">Field type cannot be changed for built-in fields.</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Required
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={builtinFormData.isRequired}
+                      onChange={(e) => setBuiltinFormData((p) => ({ ...p, isRequired: e.target.checked }))}
+                      className="rounded text-dillaGreen w-4 h-4"
+                      disabled={PROTECTED_FIELD_KEYS.includes(builtinFormData.fieldKey.toLowerCase())}
+                    />
+                    <span>
+                      {PROTECTED_FIELD_KEYS.includes(builtinFormData.fieldKey.toLowerCase())
+                        ? 'Protected - must be required'
+                        : 'Mandatory field'}
+                    </span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Active
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={builtinFormData.isActive}
+                      onChange={(e) => setBuiltinFormData((p) => ({ ...p, isActive: e.target.checked }))}
+                      className="rounded text-dillaGreen w-4 h-4"
+                      disabled={PROTECTED_FIELD_KEYS.includes(builtinFormData.fieldKey.toLowerCase())}
+                    />
+                    <span>
+                      {PROTECTED_FIELD_KEYS.includes(builtinFormData.fieldKey.toLowerCase())
+                        ? 'Protected - must be active'
+                        : 'Active on form'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Display Order Index
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={builtinFormData.displayOrder}
+                  onChange={(e) => setBuiltinFormData((p) => ({ ...p, displayOrder: e.target.value }))}
+                  className="text-slate-900 text-xs h-9"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Applies To
+                </label>
+                <select
+                  value={builtinFormData.appliesTo}
+                  onChange={(e) => setBuiltinFormData((p) => ({ ...p, appliesTo: e.target.value }))}
+                  className="w-full h-9 px-3 border border-slate-300 rounded-lg text-slate-900 bg-white text-xs"
+                >
+                  <option value="all">All Students</option>
+                  <option value="cafe">Cafeteria Beneficiary Students Only</option>
+                  <option value="non-cafe">Non-Cafeteria Subsidy Students Only</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={builtinFormData.visibleStudent}
+                    onChange={(e) => setBuiltinFormData((p) => ({ ...p, visibleStudent: e.target.checked }))}
+                    className="rounded text-dillaGreen w-4 h-4"
+                  />
+                  <span>Visible to Students</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={builtinFormData.visibleDean}
+                    onChange={(e) => setBuiltinFormData((p) => ({ ...p, visibleDean: e.target.checked }))}
+                    className="rounded text-dillaGreen w-4 h-4"
+                  />
+                  <span>Visible to Dean</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={builtinFormData.visibleAdmin}
+                    onChange={(e) => setBuiltinFormData((p) => ({ ...p, visibleAdmin: e.target.checked }))}
+                    className="rounded text-dillaGreen w-4 h-4"
+                  />
+                  <span>Visible to Admin</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Validation Rules (JSON)
+                </label>
+                <Input
+                  placeholder='e.g. {"minLength": 5, "maxLength": 50}'
+                  value={builtinFormData.validationRules}
+                  onChange={(e) => setBuiltinFormData((p) => ({ ...p, validationRules: e.target.value }))}
+                  className="text-slate-900 text-xs font-mono h-9"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsBuiltInModalOpen(false)}
+                  className="text-xs px-4 py-2"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="text-xs px-5 py-2 font-bold shadow-md"
+                >
+                  Save Built-in Field
                 </Button>
               </div>
             </form>

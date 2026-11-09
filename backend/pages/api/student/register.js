@@ -1,5 +1,6 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders } from '@/lib/auth'
+import { requireStudentOnboarding } from '@/lib/onboarding'
 import { checkRegistrationWindow } from '@/lib/schedule'
 import { getPhotoSettings } from '@/lib/photo-settings'
 
@@ -13,6 +14,19 @@ export default async function handler(req, res) {
 
   const auth = authorize(req, ['student', 'dean', 'admin'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
+
+  // Students must complete onboarding (password change + profile) before submitting registration.
+  if (auth.user.role === 'student') {
+    const guard = requireStudentOnboarding(req, auth, null)
+    if (!guard.ok) {
+      return res.status(guard.status).json({
+        message: guard.message,
+        onboardingStatus: guard.onboardingStatus,
+        requiresPasswordChange: guard.requiresPasswordChange,
+        requiresProfileCompletion: guard.requiresProfileCompletion,
+      })
+    }
+  }
 
   // Enforce the registration window (opening/closing dates, manual close, late registration,
   // Cafe / Non-Cafe policy) on the backend. Administrators and Deans are exempt so they can

@@ -48,11 +48,19 @@ const LoginPage = () => {
       localStorage.setItem('userId', data.user.id)
       localStorage.setItem('studentId', data.user.studentId || '')
       localStorage.setItem('userEmail', data.user.email || '')
+      localStorage.setItem('profileComplete', data.user.profileComplete === true ? 'true' : 'false')
 
       // First-login / forced password change: redirect to change-password page
       if (data.requiresPasswordChange || data.user.forcePasswordChange || data.user.mustChangePassword) {
         localStorage.setItem('mustChangePassword', 'true')
         window.location.href = '/change-password'
+        setLoading(false)
+        return
+      }
+
+      // Profile completion required: redirect to profile-completion page
+      if (data.user.role === 'student' && data.user.profileComplete !== true) {
+        window.location.href = '/profile-completion'
         setLoading(false)
         return
       }

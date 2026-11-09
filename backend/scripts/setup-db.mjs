@@ -40,6 +40,7 @@ async function run() {
       email text,
       status text NOT NULL DEFAULT 'active',
       must_change_password boolean NOT NULL DEFAULT false,
+      onboarding_status text NOT NULL DEFAULT 'profile_completion_required',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -49,6 +50,22 @@ async function run() {
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS photo_url text;
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS phone text;
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
+    ALTER TABLE app_user ADD COLUMN IF NOT EXISTS onboarding_status text NOT NULL DEFAULT 'profile_completion_required';
+
+    UPDATE app_user u
+       SET onboarding_status = CASE
+         WHEN EXISTS (
+           SELECT 1 FROM student s
+           WHERE LOWER(s.student_id) = LOWER(u.username) AND s.profile_complete = true
+         ) THEN 'completed'
+         WHEN u.must_change_password = true THEN 'password_change_required'
+         ELSE 'profile_completion_required'
+       END
+     WHERE u.role = 'student';
+
+    ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_onboarding_status_check;
+    ALTER TABLE app_user ADD CONSTRAINT app_user_onboarding_status_check
+      CHECK (onboarding_status IN ('imported','password_change_required','profile_completion_required','completed'));
     ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_role_check;
     ALTER TABLE app_user ADD CONSTRAINT app_user_role_check CHECK (role IN ('student','dean','admin','viceDean'));
 
@@ -227,6 +244,55 @@ async function run() {
     CREATE INDEX IF NOT EXISTS idx_campus_submission_campus ON campus_submission(campus, status);
     CREATE INDEX IF NOT EXISTS idx_app_notification_recipient ON app_notification(recipient_id, recipient_role, campus, is_read);
     CREATE INDEX IF NOT EXISTS idx_report_history_creator ON report_history(creator_username, campus_scope, created_at DESC);
+
+    -- Built-in registration field configuration (editable by Super Admin)
+    CREATE TABLE IF NOT EXISTS builtin_field_config (
+      field_key text PRIMARY KEY,
+      label text NOT NULL,
+      description text,
+      field_type text NOT NULL DEFAULT 'text',
+      is_required boolean NOT NULL DEFAULT true,
+      is_active boolean NOT NULL DEFAULT true,
+      is_protected boolean NOT NULL DEFAULT false,
+      display_order integer NOT NULL DEFAULT 0,
+      applies_to text NOT NULL DEFAULT 'all',
+      visible_student boolean NOT NULL DEFAULT true,
+      visible_dean boolean NOT NULL DEFAULT true,
+      visible_admin boolean NOT NULL DEFAULT true,
+      validation_rules jsonb DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      updated_by text
+    );
+
+    INSERT INTO builtin_field_config (field_key, label, description, field_type, is_required, is_active, is_protected, display_order, applies_to, visible_student, visible_dean, visible_admin, updated_by)
+    VALUES
+      ('photoUrl', 'Student Passport Photo', '3:4 aspect ratio passport-size photo', 'image', true, true, false, 1, 'all', true, true, true, 'system'),
+      ('studentId', 'Student Identification Number', 'Unique admission number (e.g. DUC2023-001)', 'text', true, true, true, 2, 'all', true, true, true, 'system'),
+      ('fullName', 'Full Student Name', 'First, middle, and last name', 'text', true, true, true, 3, 'all', true, true, true, 'system'),
+      ('gender', 'Gender', 'Institutional gender classification', 'select', true, true, false, 4, 'all', true, true, true, 'system'),
+      ('campus', 'Enrolled Campus', 'Assigned University campus', 'select', true, true, false, 5, 'all', true, true, true, 'system'),
+      ('department', 'Department / Discipline', 'Academic department', 'department', true, true, false, 6, 'all', true, true, true, 'system'),
+      ('program', 'Program Type', 'Regular Degree, Continuing, or Postgraduate', 'select', true, true, false, 7, 'all', true, true, true, 'system'),
+      ('yearOfStudy', 'Year of Study', 'Academic level (Year 1 to Year 5)', 'select', true, true, false, 8, 'all', true, true, true, 'system'),
+      ('academicYear', 'Academic Year', 'Current academic calendar', 'academic_year', true, true, false, 9, 'all', true, true, true, 'system'),
+      ('phone', 'Phone Number', 'Student mobile contact', 'phone', false, true, false, 10, 'all', true, true, true, 'system'),
+      ('email', 'Email Address', 'Institutional student email', 'email', false, true, false, 11, 'all', true, true, true, 'system'),
+      ('pdfFileName', 'PDF Registration Slip', 'Official registrar verification document', 'file', true, true, false, 12, 'all', true, true, true, 'system'),
+      ('isNonCafeteria', 'Non-Cafeteria Subsidy Declaration', 'Cost-sharing legal declaration', 'checkbox', true, true, false, 13, 'all', true, true, true, 'system')
+    ON CONFLICT (field_key) DO UPDATE SET
+      label = EXCLUDED.label,
+      description = EXCLUDED.description,
+      field_type = EXCLUDED.field_type,
+      is_required = EXCLUDED.is_required,
+      is_active = EXCLUDED.is_active,
+      is_protected = EXCLUDED.is_protected,
+      display_order = EXCLUDED.display_order,
+      applies_to = EXCLUDED.applies_to,
+      visible_student = EXCLUDED.visible_student,
+      visible_dean = EXCLUDED.visible_dean,
+      visible_admin = EXCLUDED.visible_admin,
+      validation_rules = EXCLUDED.validation_rules,
+      updated_at = NOW();
   `
   await db.query(ddl)
   console.log('All tables present (idempotent DDL complete)')

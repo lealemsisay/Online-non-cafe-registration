@@ -59,15 +59,19 @@ const ChangePasswordPage = () => {
       }
 
       localStorage.removeItem('mustChangePassword')
-      setSuccess('Password changed successfully! Redirecting to your dashboard...')
+      if (data.token) localStorage.setItem('token', data.token)
+      if (data.onboardingStatus) localStorage.setItem('onboardingStatus', data.onboardingStatus)
+      setSuccess('Password changed successfully! Redirecting...')
       setOldPassword('')
       setNewPassword('')
       setConfirmPassword('')
 
       setTimeout(() => {
         const role = localStorage.getItem('userRole')
+        const profileComplete = localStorage.getItem('profileComplete') === 'true'
         if (role === 'admin' || role === 'viceDean') navigate('/admin', { replace: true })
         else if (role === 'dean') navigate('/dean', { replace: true })
+        else if (role === 'student' && !profileComplete) navigate('/profile-completion', { replace: true })
         else navigate('/', { replace: true })
       }, 1500)
     } catch (err) {
