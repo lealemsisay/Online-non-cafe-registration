@@ -221,11 +221,23 @@ export default async function handler(req, res) {
         academicYear,
         customValues,
         profileComplete,
+        dining_plan,
       } = body
 
       const newFullName = (fullName || name || (targetUser && targetUser.full_name) || '').trim()
       const newEmail = email !== undefined ? (email ? email.trim() : null) : (targetUser ? targetUser.email : null)
       const newPhotoUrl = photoUrl !== undefined ? photoUrl : (targetUser ? targetUser.photo_url : null)
+
+      // Phone must start with Ethiopia country code 251 (international format).
+      if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+        const cleanPhone = String(phone).trim()
+        if (!cleanPhone.startsWith('251')) {
+          return res.status(400).json({
+            message: 'Phone number must start with country code 251 (e.g., 251912345678).',
+            fieldKey: 'phone',
+          })
+        }
+      }
 
       // 1. Update app_user if user exists in app_user
       let updatedUser = null
@@ -263,8 +275,11 @@ export default async function handler(req, res) {
         if (department !== undefined && department !== null && String(department).trim() !== '') {
           const cleanDepartment = String(department).trim()
           const deptRes = await client.query(
-            `SELECT id, name, campus FROM department WHERE LOWER(name) = LOWER($1) AND is_active = true LIMIT 1`,
-            [cleanDepartment]
+            `SELECT id, name, campus FROM department
+             WHERE LOWER(name) = LOWER($1) AND is_active = true
+             ORDER BY CASE WHEN LOWER(COALESCE(campus, '')) = LOWER($2) THEN 0 WHEN campus IS NULL THEN 1 ELSE 2 END, id
+             LIMIT 1`,
+            [cleanDepartment, studentCampus || '']
           )
           if (deptRes.rows.length === 0) {
             return res.status(400).json({
@@ -325,22 +340,22 @@ export default async function handler(req, res) {
           academicYearValue = cleanAcademicYear
         }
 
-        const stUpdate = await client.query(
+const stUpdate = await client.query(
           `UPDATE student
            SET full_name = COALESCE($1, full_name),
-              email = $2,
-              phone = COALESCE($3, phone),
-              photo_url = COALESCE($4, photo_url),
-              gender = COALESCE($5, gender),
-              department = COALESCE($6, department),
-              program = COALESCE($7, program),
-              year_of_study = COALESCE($8, year_of_study),
-              campus = $9,
-              academic_year = $10,
-              profile_complete = COALESCE($11, profile_complete),
-              updated_at = NOW()
-           WHERE student_id = $12
-           RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus", profile_complete AS "profileComplete"`,
+               email = $2,
+               phone = COALESCE($3, phone),
+               photo_url = COALESCE($4, photo_url),
+               gender = COALESCE($5, gender),
+               department = COALESCE($6, department),
+               program = COALESCE($7, program),
+               year_of_study = COALESCE($8, year_of_study),
+               campus = $9,
+               academic_year = $10,
+               profile_complete = COALESCE($11, profile_complete),
+               updated_at = NOW()
+            WHERE student_id = $12
+            RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, photo_url AS "photoUrl", academic_year AS "academicYear", is_non_cafeteria AS "isNonCafeteria", registration_status AS "registrationStatus", application_status AS "applicationStatus", profile_complete AS "profileComplete"`,
           [
             newFullName || null,
             newEmail,
@@ -358,9 +373,16 @@ export default async function handler(req, res) {
         )
         updatedStudent = stUpdate.rows[0]
 
+        // Check if registration slip exists before allowing profile completion
+        const slipRes = await client.query(
+          "SELECT id FROM document_metadata WHERE student_id = $1 AND filename LIKE 'registration-slip-%'",
+          [existingStudent.student_id]
+        )
+        const hasSlip = slipRes.rows.length > 0
+
         // When the student completes their profile, advance onboarding status to completed
-        // and notify the student.
-        if (profileComplete === true && targetUser) {
+        // and notify the student. But only if a registration slip has been uploaded.
+        if (profileComplete === true && targetUser && hasSlip) {
           await client.query(
             'UPDATE app_user SET onboarding_status = $1, updated_at = NOW() WHERE id = $2',
             ['completed', targetUser.id]
@@ -381,6 +403,25 @@ export default async function handler(req, res) {
           } catch (notifErr) {
             console.error('Profile completion notification error (non-fatal):', notifErr.message)
           }
+        } else if (profileComplete === true && targetUser && !hasSlip) {
+          // Remove profileComplete if slip was not uploaded, keep onboarding incomplete
+          // Reset profileComplete in app_user and student if it was set
+          if (targetUser) {
+            await client.query(
+              'UPDATE app_user SET profile_complete = false, updated_at = NOW() WHERE id = $1',
+              [targetUser.id]
+            )
+          }
+          if (existingStudent) {
+            await client.query(
+              'UPDATE student SET profile_complete = false, updated_at = NOW() WHERE student_id = $1',
+              [existingStudent.student_id]
+            )
+          }
+          return res.status(400).json({
+            message: 'Registration slip is required for student approval. Please upload your registration slip.',
+            fieldKey: 'pdfFileName',
+          })
         }
 
         // Update custom values if passed

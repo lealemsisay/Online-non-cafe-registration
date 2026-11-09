@@ -5,6 +5,7 @@ import Icon from '@/components/icons/Icon'
 import ActionMenu from '@/components/common/ActionMenu'
 import ConfirmModal from '@/components/common/ConfirmModal'
 import StudentDetailModal from '@/components/students/StudentDetailModal'
+import { PDFViewer } from '@/components/pdf-viewer/PDFViewer'
 
 const StudentApplicationManagement = () => {
   const [applications, setApplications] = useState([])
@@ -13,19 +14,20 @@ const StudentApplicationManagement = () => {
   const [selectedStatus, setSelectedStatus] = useState('all')
   const [actionMessage, setActionMessage] = useState(null)
   const [error, setError] = useState(null)
-
-  // Detail modal state
+  const [selectedApps, setSelectedApps] = useState([])
+  const [isExporting, setIsExporting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDetailModal, setShowDetailModal] = useState(false)
   const [detailStudentId, setDetailStudentId] = useState(null)
   const [detailInitialData, setDetailInitialData] = useState(null)
-  const [showDetailModal, setShowDetailModal] = useState(false)
-
-  // Delete confirmation modal state
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [isDeleting, setIsDeleting] = useState(false)
-
-  // Reset password modal state
+  const [deletingTarget, setDeletingTarget] = useState(null)
   const [resetTargetStudent, setResetTargetStudent] = useState(null)
-  const [resetPasswordInput, setResetPasswordInput] = useState('Student@Dilla2026!')
+  const [exportingTarget, setExportingTarget] = useState(null)
+
+  const userRole = localStorage.getItem('userRole')
+  const isSuperAdmin = userRole === 'super_admin'
+  const isDocumentAccessible = userRole === 'super_admin' || userRole === 'admin'
 
   const loadApplications = () => {
     const token = localStorage.getItem('token')
@@ -52,9 +54,13 @@ const StudentApplicationManagement = () => {
           superAdminComments: u.superAdminComments || '',
           submittedAt: u.createdAt || u.submittedAt || new Date().toISOString(),
           photoUrl: u.photoUrl || null,
-          pdfUrl: `/api/documents/upload?id=${u.studentId || u.id}`,
+          hasDocument: !!(
+            u.documentMetadata && u.documentMetadata.length > 0
+          ),
+          documentId: u.documentMetadata?.find(
+            (d) => d.filename && d.filename.startsWith('registration-slip')
+          )?.id,
         }))
-
         if (apps.length > 0) {
           setApplications(apps)
         }
@@ -180,6 +186,47 @@ const StudentApplicationManagement = () => {
     }
   }
 
+  const handleExportSelected = async () => {
+    if (selectedApps.length === 0 || !isSuperAdmin) return
+    setIsExporting(true)
+    setError(null)
+    const token = localStorage.getItem('token')
+
+    try {
+      for (const id of selectedApps) {
+        const res = await fetch(`/api/students/export-document?id=${id}`, {
+          method: 'GET',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success) {
+            const { student } = data
+            const blob = new Blob([], { type: 'text/csv;charset=utf-8;' })
+            const url = window.URL.createObjectURL(blob)
+            window.open(url, '_blank')
+            setActionMessage(`Exported student record for ${student.studentName}`)
+          } else {
+            setError(data.message || 'Failed to export student data')
+          }
+        } else {
+          const d = await res.json()
+          setError(d.message || 'Failed to export document')
+        }
+      }
+    } catch (e) {
+      setError('Network error while exporting selected students')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleDeleteSelected = () => {
+    if (selectedApps.length === 0 || !isSuperAdmin) return
+    setDeleteTarget(selectedApps[0])
+  }
+
   const filteredApplications = applications.filter((app) => {
     const matchesSearch =
       (app.studentName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -256,7 +303,7 @@ const StudentApplicationManagement = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Button
             onClick={loadApplications}
             variant="outline"
@@ -265,6 +312,50 @@ const StudentApplicationManagement = () => {
             <Icon name="refresh" className="w-4 h-4 text-dillaGreen" />
             Refresh Records
           </Button>
+          {/* Select All Checkbox for Super Admin */}
+          {isSuperAdmin && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={selectedApps.length === applications.length && selectedApps.length > 0}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedApps(applications.map((a) => a.id))
+                  } else {
+                    setSelectedApps([])
+                  }
+                }}
+                className="w-4 h-4 rounded border border-slate-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
+              />
+              <span className="text-xs text-slate-700">Select All</span>
+            </div>
+          )}
+          {/* Export/Delete Buttons for Super Admin */}
+          {isSuperAdmin && selectedApps.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setExportingTarget(selectedApps[0])}
+                className="text-xs font-semibold"
+              >
+                <Icon name="download" className="w-3.5 h-3.5" /> Export
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => setDeleteTarget(selectedApps.length > 0 ? selectedApps[0] : null)}
+                className="text-xs font-semibold"
+              >
+                <Icon name="trash" className="w-3.5 h-3.5" /> Delete
+              </Button>
+            </div>
+          )}
+          {isSuperAdmin && selectedApps.length > 0 && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-slate-600">
+                {selectedApps.length} {selectedApps.length > 1 ? 'selected' : 'selected'}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -321,6 +412,26 @@ const StudentApplicationManagement = () => {
           <thead className="bg-[#f1f5f3]">
             <tr>
               <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedApps.length === applications.length && selectedApps.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedApps(applications.map((a) => a.id))
+                      } else {
+                        setSelectedApps([])
+                      }
+                    }}
+                    className="w-4 h-4 rounded border border-slate-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
+                  />
+                  <span className="text-xs text-slate-700">Select All</span>
+                </div>
+              </th>
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
+                Number
+              </th>
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Student ID
               </th>
               <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
@@ -343,29 +454,64 @@ const StudentApplicationManagement = () => {
           <tbody className="divide-y divide-slate-100 bg-white text-xs">
             {filteredApplications.length === 0 ? (
               <tr>
-                <td colSpan="6" className="px-4 py-8 text-center text-slate-500 font-medium">
+                <td colSpan="8" className="px-4 py-8 text-center text-slate-500 font-medium">
                   No applications found matching the search criteria.
                 </td>
               </tr>
             ) : (
-              filteredApplications.map((app) => (
+              filteredApplications.map((app, index) => (
                 <tr key={app.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3.5 text-center text-slate-600 text-xs">
+                    {index + 1}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedApps.includes(app.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedApps((prev) => [...prev, app.id])
+                        } else {
+                          setSelectedApps(prev => prev.filter(id => id !== app.id))
+                        }
+                      }}
+                      className="w-4 h-4 rounded border border-slate-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
+                    />
+                  </td>
                   <td className="px-4 py-3.5 font-mono font-bold text-dillaGreen text-xs">
                     {app.studentId}
                   </td>
-                  <td className="px-4 py-3.5 font-bold text-slate-900">
+                  <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
                       {app.photoUrl ? (
-                        <img
-                          src={app.photoUrl.startsWith('http') ? app.photoUrl : `/api/student/photo?file=${encodeURIComponent(app.photoUrl.replace(/^\/uploads\/photos\//, ''))}`}
-                          alt={app.studentName}
-                          className="w-7 h-9 object-cover rounded border border-slate-200 flex-shrink-0"
-                          style={{ aspectRatio: '3/4' }}
-                          onError={(e) => { e.target.style.display = 'none' }}
-                        />
+                        <div
+                          onClick={() => {
+                            setDetailStudentId(app.studentId || app.id)
+                            setDetailInitialData(app)
+                            setShowDetailModal(true)
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <img
+                            src={app.photoUrl.startsWith('http') || app.photoUrl.startsWith('/api/student/photo?file=') ? app.photoUrl : `/api/student/photo?file=${encodeURIComponent(app.photoUrl.replace(/^\/uploads\/photos\//, ''))}`}
+                            alt={app.studentName}
+                            className="w-7 h-9 object-cover rounded border border-slate-200 flex-shrink-0"
+                            style={{ aspectRatio: '3/4' }}
+                            onError={(e) => { e.target.style.display = 'none' }}
+                          />
+                        </div>
                       ) : (
-                        <div className="w-7 h-9 bg-slate-100 rounded border border-slate-200 flex items-center justify-center flex-shrink-0">
-                          <Icon name="user" className="w-4 h-4 text-slate-400" />
+                        <div
+                          onClick={() => {
+                            setDetailStudentId(app.studentId || app.id)
+                            setDetailInitialData(app)
+                            setShowDetailModal(true)
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <div className="w-7 h-9 bg-slate-100 rounded border border-slate-200 flex items-center justify-center flex-shrink-0">
+                            <Icon name="user" className="w-4 h-4 text-slate-400" />
+                          </div>
                         </div>
                       )}
                       {app.studentName}
@@ -385,7 +531,7 @@ const StudentApplicationManagement = () => {
                       <ActionMenu items={getActionMenuItems(app)} />
                     </div>
                   </td>
-                </tr>
+</tr>
               ))
             )}
           </tbody>
@@ -407,18 +553,27 @@ const StudentApplicationManagement = () => {
         onConfirm={handleDeleteApplication}
         isLoading={isDeleting}
         title="Delete Student Application"
-        description={
-          deleteTarget
-            ? `You are about to permanently delete the application record for ${deleteTarget.studentName} (${deleteTarget.studentId}). All associated data including documents, dean reviews, and approval history will be permanently removed.`
-            : ''
-        }
+        description="You are about to permanently delete the application record. All associated data including documents, dean reviews, and approval history will be permanently removed."
         confirmLabel="Delete Record"
         danger
       />
 
+      {/* Export/Delete Modals */}
+      {isDocumentAccessible && (
+        <ConfirmModal
+          isOpen={!!exportingTarget}
+          onClose={() => setExportingTarget(null)}
+          onConfirm={handleExportSelected}
+          isLoading={isExporting}
+          title="Export Registration Document"
+          description="This will export the student's registration slip PDF. The file will be downloaded to your browser."
+          confirmLabel="Export Document"
+        />
+      )}
+
       {/* Password Reset Modal */}
       {resetTargetStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
             <h3 className="text-lg font-bold text-dillaDarkGreen mb-1">
               Reset Student Password
@@ -461,6 +616,14 @@ const StudentApplicationManagement = () => {
           </div>
         </div>
       )}
+
+      {/* Student Detail Dossier Modal */}
+      <StudentDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        studentId={detailStudentId}
+        initialData={detailInitialData}
+      />
     </div>
   )
 }

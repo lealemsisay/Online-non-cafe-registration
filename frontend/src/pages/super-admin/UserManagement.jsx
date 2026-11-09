@@ -1792,7 +1792,7 @@ const UserManagement = () => {
                         <div className="flex items-center gap-2">
                           {st.photoUrl ? (
                             <img
-                              src={st.photoUrl.startsWith('http') ? st.photoUrl : `/api/student/photo?file=${encodeURIComponent(st.photoUrl.replace(/^\/uploads\/photos\//, ''))}`}
+                              src={st.photoUrl.startsWith('http') || st.photoUrl.startsWith('/api/student/photo?file=') ? st.photoUrl : `/api/student/photo?file=${encodeURIComponent(st.photoUrl.replace(/^\/uploads\/photos\//, ''))}`}
                               alt={st.fullName}
                               className="w-6 h-8 object-cover rounded border border-slate-200 flex-shrink-0"
                               onError={(e) => { e.target.style.display = 'none' }}

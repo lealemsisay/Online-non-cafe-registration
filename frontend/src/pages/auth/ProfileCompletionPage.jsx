@@ -1,12 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { Input, Button, Select } from '@/components/forms'
+import PassportPhotoUpload from '@/components/forms/PassportPhotoUpload'
 import Icon from '@/components/icons/Icon'
-import ConfirmModal from '@/components/common/ConfirmModal'
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
+
+const fileToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+
+// Built-in fields that are either rendered specially or are identity fields shown in the header.
+const HIDDEN_FIELD_KEYS = new Set(['isnoncafeteria', 'photourl', 'studentid', 'fullname'])
 
 const ProfileCompletionPage = () => {
   const [profile, setProfile] = useState(null)
@@ -14,13 +25,17 @@ const ProfileCompletionPage = () => {
   const [customFields, setCustomFields] = useState([])
   const [departments, setDepartments] = useState([])
   const [campuses, setCampuses] = useState([])
-  const [batches, setBatches] = useState([])
   const [academicYears, setAcademicYears] = useState([])
+  const [programs, setPrograms] = useState([])
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
+
+  const [pdfUploading, setPdfUploading] = useState(false)
+  const pdfInputRef = useRef(null)
 
   // Dynamic form state keyed by fieldKey
   const [formValues, setFormValues] = useState({})
@@ -31,7 +46,7 @@ const ProfileCompletionPage = () => {
 
   const loadAllData = async () => {
     setLoading(true)
-    setError(null)
+    setLoadError(null)
     const headers = getAuthHeaders()
     const userId = localStorage.getItem('userId')
 
@@ -40,14 +55,47 @@ const ProfileCompletionPage = () => {
       const profileRes = await fetch(`/api/profile?id=${encodeURIComponent(userId || '')}`, { headers })
       if (profileRes.ok) {
         const profileData = await profileRes.json()
-        setProfile(profileData.user || {})
+        const user = profileData.user || {}
+        const student = profileData.student || {}
+        setProfile(user)
+        setFormValues((prev) => ({
+          ...prev,
+          gender: user.gender || student.gender || '',
+          campus: user.campus || student.campus || '',
+          department: user.department || student.department || '',
+          program: user.program || student.program || '',
+          yearOfStudy:
+            user.yearOfStudy != null
+              ? String(user.yearOfStudy)
+              : student.yearOfStudy != null
+                ? String(student.yearOfStudy)
+                : '',
+          academicYear: user.academicYear || student.academicYear || '',
+          phone: user.phone || student.phone || '',
+          email: user.email || student.email || '',
+          photoUrl: user.photoUrl || student.photoUrl || '',
+        }))
       }
 
-      // Load built-in fields
+      // Load built-in fields (API returns snake_case)
       const builtinRes = await fetch('/api/builtin-fields', { headers })
       if (builtinRes.ok) {
         const builtinData = await builtinRes.json()
-        setBuiltinFields(builtinData.builtinFields || [])
+        const normalized = (builtinData.builtinFields || []).map((f) => ({
+          ...f,
+          fieldKey: f.fieldKey ?? f.field_key,
+          fieldType: f.fieldType ?? f.field_type,
+          isRequired: f.isRequired ?? f.is_required,
+          isActive: f.isActive ?? f.is_active,
+          visibleStudent: f.visibleStudent ?? f.visible_student,
+          visibleDean: f.visibleDean ?? f.visible_dean,
+          visibleAdmin: f.visibleAdmin ?? f.visible_admin,
+          displayOrder: f.displayOrder ?? f.display_order,
+          appliesTo: f.appliesTo ?? f.applies_to,
+          validationRules: f.validationRules ?? f.validation_rules,
+          helpText: f.helpText ?? f.help_text,
+        }))
+        setBuiltinFields(normalized)
       }
 
       // Load custom fields (all, including inactive for reference)
@@ -71,69 +119,135 @@ const ProfileCompletionPage = () => {
         setCampuses(campusData.campuses || [])
       }
 
-      // Load batches
-      const batchRes = await fetch('/api/settings', { headers })
-      if (batchRes.ok) {
-        const batchData = await batchRes.json()
-        if (batchData.batches) setBatches(batchData.batches)
-        if (batchData.academicYears) setAcademicYears(batchData.academicYears)
+      // Load academic years and programs (admin-managed)
+      const settingsRes = await fetch('/api/settings', { headers })
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json()
+        if (settingsData.academicYears) setAcademicYears(settingsData.academicYears)
+        if (settingsData.programs) setPrograms(settingsData.programs)
       }
     } catch (err) {
       console.error('Error loading profile data:', err)
-      setError('Error loading profile data. Please try again.')
+      setLoadError('Error loading profile data. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  // Combine built-in and custom fields, filter to student-visible required fields
+  // Combine built-in and custom fields. Every displayed field is required except the photo.
   const allFields = useMemo(() => {
     const combined = [
       ...builtinFields.map((f) => ({ ...f, isBuiltIn: true })),
       ...customFields.map((f) => ({ ...f, isBuiltIn: false })),
     ]
-    // Only include active fields visible to students
-    return combined.filter((f) => f.isActive !== false && f.visibleStudent !== false)
+    return combined.filter((f) => {
+      const key = String(f.fieldKey || '').toLowerCase()
+      return f.isActive !== false && f.visibleStudent !== false && !HIDDEN_FIELD_KEYS.has(key)
+    })
   }, [builtinFields, customFields])
 
-  // Required fields that must be completed
-  const requiredFields = allFields.filter((f) => f.isRequired)
+  const requiredFields = allFields
 
-  // Check if all required fields have values
-  const allRequiredFilled = requiredFields.every((f) => {
-    const val = formValues[f.fieldKey]
-    return val !== undefined && val !== null && val !== ''
-  })
+  const academicYearOptions = useMemo(() => {
+    const seen = new Set()
+    const result = []
+    for (const ay of academicYears) {
+      const value = typeof ay === 'object' ? ay.year : ay
+      if (value && !seen.has(value)) {
+        seen.add(value)
+        result.push(value)
+      }
+    }
+    return result
+  }, [academicYears])
 
   const handleInputChange = (fieldKey, value) => {
     setFormValues((prev) => ({ ...prev, [fieldKey]: value }))
     setError(null)
   }
 
+  const handlePdfSelect = async (file) => {
+    if (!file) return
+    setError(null)
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (!isPdf) {
+      setError('Only PDF registration slips are accepted.')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('The registration slip must be 10MB or smaller.')
+      return
+    }
+
+    setPdfUploading(true)
+    try {
+      const dataUrl = await fileToBase64(file)
+      const res = await fetch('/api/profile/document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ fileBase64: dataUrl, fileName: file.name }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.message || 'Failed to upload the registration slip.')
+        return
+      }
+      handleInputChange('pdfFileName', data.filename || file.name)
+    } catch (err) {
+      console.error('Registration slip upload error:', err)
+      setError('Network error uploading the registration slip.')
+    } finally {
+      setPdfUploading(false)
+      if (pdfInputRef.current) pdfInputRef.current.value = ''
+    }
+  }
+
+  const handlePhotoSaved = (photoUrl) => {
+    setFormValues((prev) => ({ ...prev, photoUrl }))
+    setProfile((prev) => (prev ? { ...prev, photoUrl } : prev))
+  }
+
   const handleSave = async (e) => {
     e.preventDefault()
-    setSaving(true)
     setError(null)
     setMessage(null)
 
+    // Validate every required field (all fields except the optional photo).
+    const missing = requiredFields.filter((f) => {
+      const val = formValues[f.fieldKey]
+      if (f.fieldType === 'checkbox') return val !== true
+      return val === undefined || val === null || String(val).trim() === ''
+    })
+
+    if (missing.length > 0) {
+      setError(
+        `Please fill in the following required field${missing.length > 1 ? 's' : ''}: ${missing
+          .map((f) => f.label)
+          .join(', ')}.`
+      )
+      return
+    }
+
+    const phoneRaw = String(formValues.phone || '').trim()
+    // Must start with +251 and the first digit after the country code must be 9
+    const normalized = phoneRaw.startsWith('+') ? phoneRaw.slice(1) : phoneRaw
+    if (phoneRaw !== '' && !normalized.startsWith('2519')) {
+      setError('Phone number must start with +251 and the first digit after the country code must be 9 (e.g., +251912345678).')
+      return
+    }
+
+    setSaving(true)
     const token = localStorage.getItem('token')
     const userId = localStorage.getItem('userId')
 
-    // Validate required fields
-    for (const f of requiredFields) {
-      const val = formValues[f.fieldKey]
-      if (val === undefined || val === null || val === '') {
-        setError(`${f.label} is required.`)
-        return
-      }
-    }
-
     try {
-      // Map built-in field keys to profile API fields
       const body = {
         userId,
         profileComplete: true,
       }
+
+      if (formValues.photoUrl) body.photoUrl = formValues.photoUrl
 
       // Map built-in fields to the profile API
       const fieldMapping = {
@@ -174,15 +288,18 @@ const ProfileCompletionPage = () => {
         body: JSON.stringify(body),
       })
 
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      console.error('Profile save response:', res.status, data)
       if (res.ok) {
         setMessage('Profile completed successfully! You now have full access to the dashboard.')
         localStorage.setItem('profileComplete', 'true')
+        localStorage.setItem('userPhotoUrl', formValues.photoUrl || '')
+        if (data.onboardingStatus) localStorage.setItem('onboardingStatus', data.onboardingStatus)
         setTimeout(() => {
           window.location.href = '/'
         }, 1500)
       } else {
-        setError(data.message || 'Failed to complete profile.')
+        setError(`${data.message || 'Failed to complete profile.'}${data.fieldKey ? ` (${data.fieldKey})` : ''}`)
       }
     } catch (err) {
       console.error('Profile completion error:', err)
@@ -192,7 +309,6 @@ const ProfileCompletionPage = () => {
     }
   }
 
-  const isStudent = profile?.role === 'student'
   const userName = profile?.fullName || profile?.name || 'Student'
   const userId = profile?.username || profile?.studentId || localStorage.getItem('studentId') || ''
 
@@ -207,13 +323,13 @@ const ProfileCompletionPage = () => {
     )
   }
 
-  if (error) {
+  if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8faf9] p-4">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 max-w-md w-full text-center">
           <Icon name="alert-circle" className="w-8 h-8 text-rose-600 mx-auto mb-4" />
           <h2 className="text-lg font-bold text-slate-900 mb-2">Error Loading Profile</h2>
-          <p className="text-xs text-slate-500 mb-6">{error}</p>
+          <p className="text-xs text-slate-500 mb-6">{loadError}</p>
           <Button
             onClick={() => window.location.reload()}
             variant="primary"
@@ -234,7 +350,7 @@ const ProfileCompletionPage = () => {
           <h2 className="text-lg font-bold text-slate-900 mb-2">Profile Not Found</h2>
           <p className="text-xs text-slate-500 mb-6">Unable to load your student profile.</p>
           <Button
-            onClick={() => window.location.href = '/login'}
+            onClick={() => (window.location.href = '/login')}
             variant="primary"
             className="w-full text-xs font-bold"
           >
@@ -256,13 +372,14 @@ const ProfileCompletionPage = () => {
         </div>
       </div>
 
-      <div className="flex-1 p-4 sm:p-6 max-w-4xl mx-auto">
+      <div className="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-bold text-dillaDarkGreen">Student Profile Completion</h2>
               <p className="text-xs text-slate-500 mt-1">
-                Fill in all required fields marked with <span className="text-rose-600">*</span>. Optional fields can be left blank.
+                All fields below are required except the photograph. Fields marked with{' '}
+                <span className="text-rose-600">*</span> must be completed.
               </p>
             </div>
             <span className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
@@ -292,8 +409,12 @@ const ProfileCompletionPage = () => {
             {/* Student Info Header */}
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-dillaDarkGreen text-white flex items-center justify-center text-xs font-bold">
-                  {userId.substring(0, 2).toUpperCase()}
+                <div className="w-10 h-10 rounded-full bg-dillaDarkGreen text-white flex items-center justify-center text-xs font-bold overflow-hidden">
+                  {profile?.photoUrl ? (
+                    <img src={profile.photoUrl} alt={userName} className="w-full h-full object-cover" />
+                  ) : (
+                    userId.substring(0, 2).toUpperCase()
+                  )}
                 </div>
                 <div>
                   <p className="text-sm font-bold text-slate-900">{userName}</p>
@@ -303,8 +424,22 @@ const ProfileCompletionPage = () => {
               </div>
             </div>
 
+            {/* Photograph (optional) */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Icon name="user" className="w-3 h-3 text-emerald-600" />
+                Photograph (Optional)
+              </h3>
+              <PassportPhotoUpload
+                photoUrl={formValues.photoUrl || profile?.photoUrl || null}
+                studentId={userId}
+                onPhotoUploaded={handlePhotoSaved}
+                onPhotoSaved={handlePhotoSaved}
+              />
+            </div>
+
             {/* Required Fields Section */}
-            <div className="space-y-4">
+            <div className="space-y-4 pt-2">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <Icon name="circle" className="w-3 h-3 text-rose-600" />
                 Required Fields
@@ -312,7 +447,6 @@ const ProfileCompletionPage = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {requiredFields.map((field) => {
-                  const isBuiltIn = field.isBuiltIn
                   const fieldOptions = field.options || []
                   const isDept = field.fieldKey === 'department'
                   const isCampus = field.fieldKey === 'campus'
@@ -320,11 +454,12 @@ const ProfileCompletionPage = () => {
                   const isYearOfStudy = field.fieldKey === 'yearOfStudy'
                   const isAcademicYear = field.fieldKey === 'academicYear'
                   const isGender = field.fieldKey === 'gender'
+                  const isPdf = field.fieldKey === 'pdfFileName' || field.fieldType === 'file'
 
                   return (
                     <div
                       key={field.fieldKey}
-                      className={field.fieldType === 'textarea' ? 'sm:col-span-2' : ''}
+                      className={field.fieldType === 'textarea' || isPdf ? 'sm:col-span-2' : ''}
                     >
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
                         {field.label}
@@ -338,212 +473,170 @@ const ProfileCompletionPage = () => {
                       {isDept && (
                         <Select
                           value={formValues[field.fieldKey] || ''}
-                          onChange={(val) => handleInputChange(field.fieldKey, val)}
-                          placeholder="Select department"
+                          onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                          placeholder="-- Select Department --"
                           className="h-10 text-slate-900"
-                        >
-                          <option value="">-- Select Department --</option>
-                          {departments
+                          options={departments
                             .filter((d) => d.isActive !== false)
-                            .filter((d) => !field.campus || d.campus === field.campus || d.campus === profile?.campus)
-                            .map((d) => (
-                              <option key={d.id} value={d.name}>
-                                {d.name}{d.code ? ` (${d.code})` : ''}
-                              </option>
-                            ))}
-                        </Select>
+                            .filter((d) => {
+                              const studentCampus = String(profile?.campus || '').toLowerCase()
+                              return !d.campus || !studentCampus || String(d.campus).toLowerCase() === studentCampus
+                            })
+                            .map((d) => ({
+                              value: d.name,
+                              label: d.code ? `${d.name} (${d.code})` : d.name,
+                            }))}
+                        />
                       )}
 
                       {/* Campus Dropdown */}
                       {isCampus && (
                         <Select
                           value={formValues[field.fieldKey] || ''}
-                          onChange={(val) => handleInputChange(field.fieldKey, val)}
-                          placeholder="Select campus"
+                          onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                          placeholder="-- Select Campus --"
                           className="h-10 text-slate-900"
-                        >
-                          <option value="">-- Select Campus --</option>
-                          {campuses.map((c) => (
-                            <option key={c.id || c.name} value={c.name}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </Select>
+                          options={campuses
+                            .filter((c) => c.status === undefined || c.status === 'active')
+                            .map((c) => ({ value: c.name, label: c.name }))}
+                        />
                       )}
 
                       {/* Program Dropdown */}
                       {isProgram && (
                         <Select
                           value={formValues[field.fieldKey] || ''}
-                          onChange={(val) => handleInputChange(field.fieldKey, val)}
-                          placeholder="Select program"
+                          onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                          placeholder="-- Select Program --"
                           className="h-10 text-slate-900"
-                        >
-                          <option value="">-- Select Program --</option>
-                          <option value="Regular Degree">Regular Degree</option>
-                          <option value="Continuing Education">Continuing Education</option>
-                          <option value="Postgraduate Degree">Postgraduate Degree</option>
-                          <option value="Masters Program">Masters Program</option>
-                        </Select>
+                          options={programs.map((p) => ({
+                            value: typeof p === 'object' ? p.value : p,
+                            label: typeof p === 'object' ? (p.label ?? p.value) : p,
+                          }))}
+                        />
                       )}
 
                       {/* Year of Study Dropdown */}
                       {isYearOfStudy && (
                         <Select
                           value={formValues[field.fieldKey] || ''}
-                          onChange={(val) => handleInputChange(field.fieldKey, val)}
-                          placeholder="Select year"
+                          onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                          placeholder="-- Select Year --"
                           className="h-10 text-slate-900"
-                        >
-                          <option value="">-- Select Year --</option>
-                          {[1, 2, 3, 4, 5].map((y) => (
-                            <option key={y} value={String(y)}>
-                              Year {y}
-                            </option>
-                          ))}
-                        </Select>
+                          options={[1, 2, 3, 4, 5].map((y) => ({ value: String(y), label: `Year ${y}` }))}
+                        />
                       )}
 
                       {/* Academic Year Dropdown */}
                       {isAcademicYear && (
                         <Select
                           value={formValues[field.fieldKey] || ''}
-                          onChange={(val) => handleInputChange(field.fieldKey, val)}
-                          placeholder="Select academic year"
+                          onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                          placeholder="-- Select Academic Year --"
                           className="h-10 text-slate-900"
-                        >
-                          <option value="">-- Select Academic Year --</option>
-                          {academicYears.map((ay) => (
-                            <option key={ay.id || ay.year} value={ay.year}>
-                              {ay.year}
-                            </option>
-                          ))}
-                          <option value="2023/2024">2023/2024</option>
-                          <option value="2024/2025">2024/2025</option>
-                          <option value="2025/2026">2025/2026</option>
-                        </Select>
+                          options={academicYearOptions.map((y) => ({ value: y, label: y }))}
+                        />
                       )}
 
                       {/* Gender Dropdown */}
                       {isGender && (
                         <Select
                           value={formValues[field.fieldKey] || ''}
-                          onChange={(val) => handleInputChange(field.fieldKey, val)}
-                          placeholder="Select gender"
+                          onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                          placeholder="-- Select Gender --"
                           className="h-10 text-slate-900"
-                        >
-                          <option value="">-- Select Gender --</option>
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
-                          <option value="Other">Other</option>
-                        </Select>
+                          options={['Male', 'Female']}
+                        />
+                      )}
+
+                      {/* PDF Registration Slip Upload */}
+                      {isPdf && (
+                        <div>
+                          <input
+                            type="file"
+                            ref={pdfInputRef}
+                            accept=".pdf,application/pdf"
+                            onChange={(e) => handlePdfSelect(e.target.files?.[0])}
+                            className="hidden"
+                          />
+                          <div
+                            onClick={() => !pdfUploading && pdfInputRef.current?.click()}
+                            className="border-2 border-dashed border-slate-300 hover:border-dillaGreen rounded-2xl p-6 text-center cursor-pointer transition-all hover:bg-emerald-50/30 bg-slate-50"
+                          >
+                            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-dillaGreen flex items-center justify-center mx-auto mb-2 shadow-2xs">
+                              <Icon name="upload" className="w-6 h-6 text-dillaGreen" />
+                            </div>
+                            <p className="text-sm font-bold text-slate-800">
+                              {pdfUploading
+                                ? 'Uploading registration slip...'
+                                : formValues.pdfFileName
+                                  ? `Attached: ${formValues.pdfFileName}`
+                                  : 'Click to select and upload your semester registration slip (PDF)'}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Accepted format: PDF • Maximum file size: 10MB
+                            </p>
+                          </div>
+                        </div>
                       )}
 
                       {/* Generic input */}
-                      {!isDept && !isCampus && !isProgram && !isYearOfStudy && !isAcademicYear && !isGender && (
-                        <>
-                          {field.fieldType === 'select' || field.fieldType === 'radio' ? (
-                            <Select
-                              value={formValues[field.fieldKey] || ''}
-                              onChange={(val) => handleInputChange(field.fieldKey, val)}
-                              placeholder={`Select ${field.label}`}
-                              className="h-10 text-slate-900"
-                            >
-                              <option value="">-- Select {field.label} --</option>
-                              {fieldOptions.map((o) => (
-                                <option key={o} value={o}>
-                                  {o}
-                                </option>
-                              ))}
-                            </Select>
-                          ) : field.fieldType === 'textarea' ? (
-                            <textarea
-                              value={formValues[field.fieldKey] || ''}
-                              onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
-                              rows={3}
-                              placeholder={`Enter ${field.label}...`}
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
-                            />
-                          ) : field.fieldType === 'checkbox' ? (
-                            <label className="flex items-center gap-2 pt-1 text-xs font-bold text-slate-700">
-                              <input
-                                type="checkbox"
-                                checked={formValues[field.fieldKey] === true}
-                                onChange={(e) => handleInputChange(field.fieldKey, e.target.checked)}
-                                className="rounded text-dillaGreen w-4 h-4"
+                      {!isDept &&
+                        !isCampus &&
+                        !isProgram &&
+                        !isYearOfStudy &&
+                        !isAcademicYear &&
+                        !isGender &&
+                        !isPdf && (
+                          <>
+                            {field.fieldType === 'select' || field.fieldType === 'radio' ? (
+                              <Select
+                                value={formValues[field.fieldKey] || ''}
+                                onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                                placeholder={`-- Select ${field.label} --`}
+                                className="h-10 text-slate-900"
+                                options={fieldOptions}
                               />
-                              <span>Confirm {field.label}</span>
-                            </label>
-                          ) : (
-                            <Input
-                              type={field.fieldType === 'date' ? 'date' : 'text'}
-                              value={formValues[field.fieldKey] || ''}
-                              onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
-                              placeholder={`Enter ${field.label}...`}
-                              className="h-10 text-slate-900"
-                            />
-                          )}
-                        </>
-                      )}
+                            ) : field.fieldType === 'textarea' ? (
+                              <textarea
+                                value={formValues[field.fieldKey] || ''}
+                                onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                                rows={3}
+                                placeholder={`Enter ${field.label}...`}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
+                              />
+                            ) : field.fieldType === 'checkbox' ? (
+                              <label className="flex items-center gap-2 pt-1 text-xs font-bold text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={formValues[field.fieldKey] === true}
+                                  onChange={(e) => handleInputChange(field.fieldKey, e.target.checked)}
+                                  className="rounded text-dillaGreen w-4 h-4"
+                                />
+                                <span>Confirm {field.label}</span>
+                              </label>
+                            ) : (
+                              <Input
+                                type={field.fieldType === 'date' ? 'date' : field.fieldType === 'email' ? 'email' : 'text'}
+                                value={formValues[field.fieldKey] || ''}
+                                onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
+                                placeholder={`Enter ${field.label}...`}
+                                className="h-10 text-slate-900"
+                              />
+                            )}
+                          </>
+                        )}
                     </div>
                   )
                 })}
-              </div>
-
-              {/* Optional Fields Section */}
-              <div className="pt-6 border-t border-slate-200">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <Icon name="minus" className="w-3 h-3 text-emerald-600" />
-                  Optional Fields
-                </h3>
-                <p className="text-[10px] text-slate-500 mb-4">
-                  These fields are optional and will not block profile completion.
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {allFields
-                    .filter((f) => !f.isRequired)
-                    .map((field) => (
-                      <div
-                        key={field.fieldKey}
-                        className={field.fieldType === 'textarea' ? 'sm:col-span-2' : ''}
-                      >
-                        <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
-                          {field.label}
-                        </label>
-                        {field.helpText && (
-                          <p className="text-[10px] text-slate-400 mb-2">{field.helpText}</p>
-                        )}
-                        <Input
-                          type="text"
-                          value={formValues[field.fieldKey] || ''}
-                          onChange={(e) => handleInputChange(field.fieldKey, e.target.value)}
-                          placeholder={`Enter ${field.label}...`}
-                          className="h-10 text-slate-900"
-                        />
-                      </div>
-                    ))}
-                </div>
               </div>
             </div>
 
             {/* Action Buttons */}
             <div className="pt-6 border-t border-slate-200 flex items-center justify-end gap-3">
               <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  if (confirm('Leaving now will leave your profile incomplete. You will be redirected back here on next login. Continue?')) {
-                    window.location.href = '/login'
-                  }
-                }}
-                className="text-xs px-4 py-2"
-              >
-                Not Now
-              </Button>
-              <Button
                 type="submit"
-                disabled={saving || !allRequiredFilled}
+                disabled={saving || pdfUploading}
                 variant="primary"
                 className="text-xs px-6 py-2.5 font-bold shadow-md"
               >

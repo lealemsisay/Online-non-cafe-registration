@@ -147,13 +147,32 @@ const Header = ({ isSidebarOpen, onToggleSidebar, user, onLogout }) => {
           {/* Right actions */}
           <div className="flex items-center gap-2 sm:gap-3">
             {user && (
-              <div className="flex items-center gap-2 sm:gap-3 text-right">
-                <div className="hidden md:flex flex-col items-end">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-600">
+                    ID: {user.id || ''}
+                  </span>
+                  {user.photoUrl ? (
+                    <img
+                      src={user.photoUrl}
+                      alt={user.name || 'Profile'}
+                      className="w-6 h-6 rounded-full object-cover border-2 border-white cursor-pointer hover:scale-110 transition-transform"
+                      title="Profile"
+                      onClick={() => setIsProfileMenuOpen(true)}
+                    />
+                  ) : (
+                    <Icon
+                      name="user"
+                      className="w-4 h-4 text-dillaGreen cursor-pointer"
+                      onClick={() => setIsProfileMenuOpen(true)}
+                      title="Profile"
+                    />
+                  )}
                   <span className="text-sm font-bold text-slate-800 leading-none">
                     {user.name || 'User'}
                   </span>
                   {user.campus && (
-                    <span className="text-[11px] text-dillaGreen font-semibold mt-1">
+                    <span className="text-[10px] text-dillaGreen font-semibold ml-1">
                       {user.campus}
                     </span>
                   )}
