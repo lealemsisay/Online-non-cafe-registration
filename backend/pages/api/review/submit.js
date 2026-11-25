@@ -4,8 +4,8 @@ import { authorize, setCorsHeaders } from '@/lib/auth'
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  // Accessible by Campus Dean and Super Admin
-  const auth = authorize(req, ['dean', 'admin'])
+  // Accessible by Campus Dean, Vice Dean, and Super Admin
+  const auth = authorize(req, ['dean', 'viceDean', 'admin'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   if (req.method === 'POST') {
@@ -30,14 +30,14 @@ export default async function handler(req, res) {
 
         const student = checkRes.rows[0]
 
-        // 2. ENFORCE CAMPUS ISOLATION (Task 9):
-        // Campus Dean users must NOT access or review other campuses' data
-        if (auth.user.role === 'dean') {
+        // 2. ENFORCE CAMPUS ISOLATION:
+        // Campus Dean and Vice Dean users must NOT access or review other campuses' data
+        if (auth.user.role === 'dean' || auth.user.role === 'viceDean') {
           const deanCampus = (auth.user.campus || '').trim().toLowerCase()
           const studentCampus = (student.campus || '').trim().toLowerCase()
           if (!deanCampus || !studentCampus || deanCampus !== studentCampus) {
             return res.status(403).json({
-              message: `Forbidden: Campus Dean is strictly restricted to '${auth.user.campus}'. Cannot access or review applications from '${student.campus || 'Other Campus'}'.`,
+              message: `Forbidden: ${auth.user.role === 'viceDean' ? 'Vice Dean' : 'Campus Dean'} is strictly restricted to '${auth.user.campus}'. Cannot access or review applications from '${student.campus || 'Other Campus'}'.`,
             })
           }
         }
@@ -109,8 +109,8 @@ export default async function handler(req, res) {
 
         const student = checkRes.rows[0]
 
-        // Campus Dean isolation check
-        if (auth.user.role === 'dean') {
+        // Campus Dean/Vice Dean isolation check
+        if (auth.user.role === 'dean' || auth.user.role === 'viceDean') {
           const deanCampus = (auth.user.campus || '').trim().toLowerCase()
           const studentCampus = (student.campus || '').trim().toLowerCase()
           if (!deanCampus || !studentCampus || deanCampus !== studentCampus) {

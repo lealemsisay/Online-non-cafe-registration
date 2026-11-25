@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
   // Super Admin and Campus Dean can import students
-  const auth = authorize(req, ['admin', 'dean'])
+  const auth = authorize(req, ['admin', 'dean', 'viceDean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   // GET: download import template (csv default, xlsx optional)

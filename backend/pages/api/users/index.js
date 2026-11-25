@@ -1,5 +1,7 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders, hashPassword } from '@/lib/auth'
+import { emptyToNull, resolveCampus } from '@/lib/campus'
+import { writeAudit } from '@/lib/audit'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
@@ -15,6 +17,9 @@ export default async function handler(req, res) {
       const type = (req.query?.type || req.query?.role || '').toLowerCase()
       const search = (req.query?.search || '').trim().toLowerCase()
       const campusFilter = (req.query?.campus || '').trim()
+      const genderFilter = (req.query?.gender || '').trim()
+      const departmentFilter = (req.query?.department || '').trim()
+      const yearFilter = (req.query?.yearOfStudy || req.query?.batch || '').trim()
 
       // 1. Querying Campus Deans (Super Admin only)
       if (type === 'dean' || type === 'deans') {
@@ -38,7 +43,7 @@ export default async function handler(req, res) {
           name: d.name,
           username: d.username,
           email: d.email || `${d.username}@dilla.edu.et`,
-          campus: d.campus || 'Main Campus',
+          campus: d.campus || '',
           status: d.status || 'active',
           role: d.role,
           createdAt: d.createdAt,
@@ -67,7 +72,7 @@ export default async function handler(req, res) {
             name: d.name,
             username: d.username,
             email: d.email || `${d.username}@dilla.edu.et`,
-            campus: d.campus || 'Main Campus',
+            campus: d.campus || '',
             status: d.status || 'active',
             role: d.role,
             createdAt: d.createdAt,
@@ -87,7 +92,7 @@ export default async function handler(req, res) {
                 name: viceDean.name,
                 username: viceDean.username,
                 email: viceDean.email || `${viceDean.username}@dilla.edu.et`,
-                campus: viceDean.campus || 'Main Campus',
+                campus: viceDean.campus || '',
                 status: viceDean.status || 'active',
                 role: viceDean.role,
                 createdAt: viceDean.createdAt,
@@ -97,7 +102,7 @@ export default async function handler(req, res) {
                 name: viceDean.name,
                 username: viceDean.username,
                 email: viceDean.email || `${viceDean.username}@dilla.edu.et`,
-                campus: viceDean.campus || 'Main Campus',
+                campus: viceDean.campus || '',
                 status: viceDean.status || 'active',
                 role: viceDean.role,
                 createdAt: viceDean.createdAt,
@@ -145,6 +150,24 @@ export default async function handler(req, res) {
       if (search) {
         params.push(`%${search}%`)
         conditions.push(`(LOWER(s.full_name) LIKE $${params.length} OR LOWER(s.student_id) LIKE $${params.length} OR LOWER(COALESCE(s.department, '')) LIKE $${params.length} OR LOWER(COALESCE(s.email, '')) LIKE $${params.length})`)
+      }
+
+      if (genderFilter && genderFilter !== 'all') {
+        params.push(genderFilter.toLowerCase())
+        conditions.push(`LOWER(COALESCE(s.gender, '')) = $${params.length}`)
+      }
+
+      if (departmentFilter === '__empty__') {
+        conditions.push(`(s.department IS NULL OR TRIM(s.department) = '')`)
+      } else if (departmentFilter && departmentFilter !== 'all') {
+        params.push(departmentFilter.toLowerCase())
+        conditions.push(`LOWER(s.department) = $${params.length}`)
+      }
+
+      const yearDigits = yearFilter.replace(/\D/g, '')
+      if (yearFilter && yearFilter !== 'all' && yearDigits) {
+        params.push(yearDigits)
+        conditions.push(`REGEXP_REPLACE(COALESCE(s.year_of_study, ''), '[^0-9]', '', 'g') = $${params.length}`)
       }
 
       if (conditions.length > 0) {
@@ -196,93 +219,128 @@ export default async function handler(req, res) {
       const body = req.body || {}
       const { role } = body
 
+      const resolveStaffCampus = async () => {
+        const resolved = await resolveCampus(client, {
+          campusId: body.campusId,
+          campusName: body.campus,
+          requireActive: true,
+        })
+        return resolved
+      }
+
+      const findDuplicateUser = async (username, email) => {
+        const checks = []
+        const params = []
+        if (username) {
+          params.push(username.toLowerCase())
+          checks.push(`LOWER(username) = $${params.length}`)
+        }
+        if (email) {
+          params.push(String(email).toLowerCase())
+          checks.push(`LOWER(email) = $${params.length}`)
+        }
+        if (!checks.length) return null
+        const existingUser = await client.query(
+          `SELECT id FROM app_user WHERE ${checks.join(' OR ')} LIMIT 1`,
+          params
+        )
+        return existingUser.rows[0] || null
+      }
+
       // If creating a Vice Dean user (Super Admin only)
       if (role === 'viceDean' || role?.toLowerCase() === 'vicedean') {
-        if (auth.user.role !== 'admin') {
+        if (auth.user.role !== 'admin' && auth.user.role !== 'super_admin') {
           return res.status(403).json({ message: 'Access denied: Super Admin only' })
         }
-        const { name, email, campus, password } = body
-        if (!campus || !campus.trim()) {
-          return res.status(400).json({ message: 'Campus assignment is required when creating a Vice Dean' })
+        const { name, email, password, phone, status, username: requestedUsername } = body
+        if (!name || !String(name).trim()) {
+          return res.status(400).json({ message: 'Full name is required.' })
         }
-        const cleanCampus = campus.trim()
-        // Check for duplicate username/email
-        const rawUsername = email ? email.split('@')[0] : `vice.dean.${cleanCampus.toLowerCase().replace(/\s+/g, '')}`
-        const username = rawUsername.trim()
-
-        // Check if a user with this username already exists
-        const existingUser = await client.query(
-          `SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
-          [username]
-        )
-        if (existingUser.rows.length > 0) {
+        const campusRes = await resolveStaffCampus()
+        if (campusRes.error) return res.status(campusRes.status).json({ message: campusRes.error })
+        const cleanCampus = campusRes.campus.name
+        const username = (requestedUsername || (email ? email.split('@')[0] : `vice.dean.${cleanCampus.toLowerCase().replace(/\s+/g, '')}`)).trim()
+        if (await findDuplicateUser(username, email)) {
           return res.status(409).json({ message: 'A user with this username or email already exists.' })
         }
 
         const initialPassword = password || 'ViceDean@Dilla2026!'
         const hash = await hashPassword(initialPassword)
+        const accountStatus = status === 'inactive' ? 'inactive' : 'active'
 
         const result = await client.query(
-          `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status)
-           VALUES ($1, $2, $3, 'viceDean', $4, $5, 'active')
-           ON CONFLICT (username) DO UPDATE 
-            SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = EXCLUDED.email, status = 'active', updated_at = NOW()
-           RETURNING id, username, full_name AS "name", email, campus, role, status`,
-          [username, hash, name || 'Vice Dean', cleanCampus, email || null]
+          `INSERT INTO app_user (username, password_hash, full_name, role, campus, campus_id, email, phone, status)
+           VALUES ($1, $2, $3, 'viceDean', $4, $5, $6, $7, $8)
+           RETURNING id, username, full_name AS "name", email, phone, campus, campus_id AS "campusId", role, status`,
+          [username, hash, name.trim(), cleanCampus, campusRes.campus.id, email || null, emptyToNull(phone), accountStatus]
         )
 
-        // Notify Super Admin of new Vice Dean creation
         try {
           await client.query(
             `INSERT INTO app_notification (recipient_id, recipient_role, campus, title, message, type, link, is_read, created_at)
-             VALUES ($1, 'admin', $2, 'New Vice Dean Account', 'A new Vice Dean account has been created: ${name || username} for campus ${cleanCampus}', 'info', '/admin/users?type=viceDean', false, NOW())`,
-            [result.rows[0].id, cleanCampus]
+             VALUES ($1, 'admin', $2, 'New Vice Dean Account', $3, 'info', '/admin/users?type=viceDean', false, NOW())`,
+            [result.rows[0].id, cleanCampus, `A new Vice Dean account has been created: ${name} for campus ${cleanCampus}`]
           )
         } catch (e) {
           // Continue even if notification fails
         }
+
+        await writeAudit(client, {
+          action: 'create_vice_dean',
+          performedBy: auth.user.username || auth.user.name,
+          actorRole: auth.user.role,
+          targetId: result.rows[0].id,
+          targetType: 'user',
+          entityLabel: name.trim(),
+          campus: cleanCampus,
+          details: { username, campus: cleanCampus },
+        })
 
         return res.status(201).json({ viceDean: result.rows[0], user: result.rows[0] })
       }
 
       // If creating a Dean user (Super Admin only)
       if (role === 'dean') {
-        if (auth.user.role !== 'admin') {
+        if (auth.user.role !== 'admin' && auth.user.role !== 'super_admin') {
           return res.status(403).json({ message: 'Access denied: Super Admin only' })
         }
-        const { name, email, campus, password } = body
-        if (!campus || !campus.trim()) {
-          return res.status(400).json({ message: 'Campus assignment is required when creating a Campus Dean' })
+        const { name, email, password, phone, status, username: requestedUsername } = body
+        if (!name || !String(name).trim()) {
+          return res.status(400).json({ message: 'Full name is required.' })
         }
-        const cleanCampus = campus.trim()
-        const rawUsername = email ? email.split('@')[0] : `dean.${cleanCampus.toLowerCase().replace(/\s+/g, '')}`
-        const username = rawUsername.trim()
-
-        // Check if a user with this username already exists
-        const existingUser = await client.query(
-          `SELECT id FROM app_user WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
-          [username]
-        )
-        if (existingUser.rows.length > 0) {
+        const campusRes = await resolveStaffCampus()
+        if (campusRes.error) return res.status(campusRes.status).json({ message: campusRes.error })
+        const cleanCampus = campusRes.campus.name
+        const username = (requestedUsername || (email ? email.split('@')[0] : `dean.${cleanCampus.toLowerCase().replace(/\s+/g, '')}`)).trim()
+        if (await findDuplicateUser(username, email)) {
           return res.status(409).json({ message: 'A user with this username or email already exists.' })
         }
 
         const initialPassword = password || 'Dean@Dilla2026!'
         const hash = await hashPassword(initialPassword)
+        const accountStatus = status === 'inactive' ? 'inactive' : 'active'
 
         const result = await client.query(
-          `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status)
-           VALUES ($1, $2, $3, 'dean', $4, $5, 'active')
-           ON CONFLICT (username) DO UPDATE 
-            SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = EXCLUDED.email, status = 'active', updated_at = NOW()
-           RETURNING id, username, full_name AS "name", email, campus, role, status`,
-          [username, hash, name || 'Campus Dean', cleanCampus, email || null]
+          `INSERT INTO app_user (username, password_hash, full_name, role, campus, campus_id, email, phone, status)
+           VALUES ($1, $2, $3, 'dean', $4, $5, $6, $7, $8)
+           RETURNING id, username, full_name AS "name", email, phone, campus, campus_id AS "campusId", role, status`,
+          [username, hash, name.trim(), cleanCampus, campusRes.campus.id, email || null, emptyToNull(phone), accountStatus]
         )
 
-        // Also update campus table dean_id if campus matches
-        if (result.rows[0]?.id && cleanCampus) {
-          await client.query(`UPDATE campus SET dean_id = $1 WHERE LOWER(name) = LOWER($2)`, [result.rows[0].id, cleanCampus])
+        if (result.rows[0]?.id) {
+          await client.query(`UPDATE campus SET dean_id = $1 WHERE id = $2`, [result.rows[0].id, campusRes.campus.id])
         }
+
+        await writeAudit(client, {
+          action: 'create_dean',
+          performedBy: auth.user.username || auth.user.name,
+          actorRole: auth.user.role,
+          targetId: result.rows[0].id,
+          targetType: 'user',
+          entityLabel: name.trim(),
+          campus: cleanCampus,
+          details: { username, campus: cleanCampus },
+        })
 
         return res.status(201).json({ dean: result.rows[0], user: result.rows[0] })
       }
@@ -318,19 +376,29 @@ export default async function handler(req, res) {
         return res.status(409).json({ message: 'A student with this Student ID already exists.' })
       }
 
-      // Automatically assign campus: if Dean/Vice Dean, strictly their campus; if Admin, require or assign campus
-      const targetCampus = auth.user.role === 'dean' || auth.user.role === 'viceDean' ? auth.user.campus : (campus && campus.trim() ? campus.trim() : 'Main Campus')
+      let targetCampus
+      let campusId = null
+      if (auth.user.role === 'dean' || auth.user.role === 'viceDean') {
+        const scoped = await resolveCampus(client, { campusName: auth.user.campus, requireActive: true })
+        if (scoped.error) return res.status(scoped.status).json({ message: scoped.error })
+        targetCampus = scoped.campus.name
+        campusId = scoped.campus.id
+      } else {
+        const campusRes = await resolveCampus(client, { campusId: body.campusId, campusName: campus, requireActive: true })
+        if (campusRes.error) return res.status(campusRes.status).json({ message: campusRes.error })
+        targetCampus = campusRes.campus.name
+        campusId = campusRes.campus.id
+      }
 
-      const studentPassword = studentId  // Initial password = student ID (never stored in plain text, hashed immediately)
+      const cleanDepartment = emptyToNull(department)
+      const studentPassword = password || studentId
       const studentHash = await hashPassword(studentPassword)
 
       const result = await client.query(
-        `INSERT INTO student (student_id, full_name, gender, campus, department, program, year_of_study, phone, email, academic_year, application_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'submitted')
-         ON CONFLICT (student_id) DO UPDATE 
-         SET full_name = EXCLUDED.full_name, department = EXCLUDED.department, campus = EXCLUDED.campus, updated_at = NOW()
-         RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, department, program, year_of_study AS "yearOfStudy", phone, email, academic_year AS "academicYear", application_status AS "applicationStatus"`,
-        [studentId, fullName, gender || 'Male', targetCampus, department || 'General', program || 'Regular', yearOfStudy || '1', phone || null, email || null, academicYear || '2023/2024']
+        `INSERT INTO student (student_id, full_name, gender, campus, campus_id, department, program, year_of_study, phone, email, academic_year, application_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'submitted')
+         RETURNING id, student_id AS "studentId", full_name AS "fullName", gender, campus, campus_id AS "campusId", department, program, year_of_study AS "yearOfStudy", phone, email, academic_year AS "academicYear", application_status AS "applicationStatus"`,
+        [studentId, fullName, emptyToNull(gender), targetCampus, campusId, cleanDepartment, emptyToNull(program), emptyToNull(yearOfStudy), emptyToNull(phone), emptyToNull(email), emptyToNull(academicYear)]
       )
 
       // Ensure student also has an app_user login account with initial password = student ID
@@ -348,12 +416,21 @@ export default async function handler(req, res) {
       }
 
       await client.query(
-        `INSERT INTO app_user (username, password_hash, full_name, role, campus, email, status, must_change_password)
-         VALUES ($1, $2, $3, 'student', $4, $5, 'active', true)
-         ON CONFLICT (username) DO UPDATE 
-          SET full_name = EXCLUDED.full_name, campus = EXCLUDED.campus, email = COALESCE(EXCLUDED.email, app_user.email), updated_at = NOW()`,
-        [studentId, studentHash, fullName, targetCampus, email || null]
+        `INSERT INTO app_user (username, password_hash, full_name, role, campus, campus_id, email, status, must_change_password)
+         VALUES ($1, $2, $3, 'student', $4, $5, $6, 'active', true)`,
+        [studentId, studentHash, fullName, targetCampus, campusId, emptyToNull(email)]
       )
+
+      await writeAudit(client, {
+        action: 'create_student',
+        performedBy: auth.user.username || auth.user.name,
+        actorRole: auth.user.role,
+        targetId: studentId,
+        targetType: 'student',
+        entityLabel: fullName,
+        campus: targetCampus,
+        details: { studentId, campus: targetCampus, department: cleanDepartment },
+      })
 
       return res.status(201).json({ user: result.rows[0] })
     } catch (error) {

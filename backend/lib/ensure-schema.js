@@ -84,6 +84,16 @@ const DDL = `
     ALTER TABLE student ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false;
     ALTER TABLE student ADD COLUMN IF NOT EXISTS archived_at timestamptz;
     ALTER TABLE student ADD COLUMN IF NOT EXISTS archived_by text;
+    ALTER TABLE student ADD COLUMN IF NOT EXISTS campus_id uuid;
+    ALTER TABLE app_user ADD COLUMN IF NOT EXISTS campus_id uuid;
+
+    ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_role_check;
+    ALTER TABLE app_user ADD CONSTRAINT app_user_role_check
+      CHECK (role IN ('student','dean','admin','viceDean','super_admin'));
+
+    ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_role text;
+    ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS campus text;
+    ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS entity_label text;
 
     CREATE TABLE IF NOT EXISTS campus (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

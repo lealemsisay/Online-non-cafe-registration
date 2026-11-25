@@ -1,32 +1,31 @@
 import { pool } from '@/drizzle/client'
 import { authorize, setCorsHeaders } from '@/lib/auth'
+import { listCampuses, resolveCampus } from '@/lib/campus'
+import { writeAudit } from '@/lib/audit'
 
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  // GET: authenticated roles (student, dean, admin)
   if (req.method === 'GET') {
-    const auth = authorize(req, ['student', 'dean', 'admin'])
-    if (auth.error) return res.status(auth.status).json({ message: auth.error })
-
+    const auth = authorize(req, ['student', 'dean', 'admin', 'viceDean'])
     const client = await pool.connect()
     try {
-      const result = await client.query(`
-        SELECT c.id, c.name, c.code, c.dean_id AS "deanId", 
-               COALESCE(u.full_name, (SELECT u2.full_name FROM app_user u2 WHERE u2.role = 'dean' AND u2.campus = c.name LIMIT 1)) AS "dean", 
-               c.status, c.created_at AS "createdAt" 
-        FROM campus c 
-        LEFT JOIN app_user u ON c.dean_id = u.id 
-        ORDER BY c.name ASC
-      `)
-      const campuses = result.rows.map(c => ({
+      const requestedActive = String(req.query?.active || '') === 'true'
+      const unauthenticated = Boolean(auth.error)
+      const activeOnly = unauthenticated || requestedActive
+      const rows = await listCampuses(client, { activeOnly, includeDean: !unauthenticated })
+      const campuses = rows.map((c) => ({
         id: c.id,
         name: c.name,
         code: c.code,
-        dean: c.dean || 'Pending Assignment',
-        deanId: c.deanId,
-        status: c.status,
-        createdAt: c.createdAt,
+        status: c.status || 'active',
+        ...(unauthenticated
+          ? {}
+          : {
+              deanId: c.deanId || null,
+              dean: c.dean || 'Pending Assignment',
+              createdAt: c.createdAt,
+            }),
       }))
       return res.status(200).json({ campuses })
     } catch (error) {
@@ -37,26 +36,38 @@ export default async function handler(req, res) {
     }
   }
 
-  // POST: Super Admin only
   if (req.method === 'POST') {
     const auth = authorize(req, ['admin'])
     if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
     const { name, code, deanId } = req.body || {}
-    if (!name) {
+    if (!name || !String(name).trim()) {
       return res.status(400).json({ message: 'Campus name is required' })
     }
 
     const client = await pool.connect()
     try {
       const result = await client.query(
-        `INSERT INTO campus (name, code, dean_id, status) VALUES ($1, $2, $3, 'active') RETURNING id, name, code, dean_id AS "dean", status, created_at AS "createdAt"`,
-        [name, code || null, deanId || null]
+        `INSERT INTO campus (name, code, dean_id, status) VALUES ($1, $2, $3, 'active')
+         RETURNING id, name, code, dean_id AS "dean", status, created_at AS "createdAt"`,
+        [String(name).trim(), code || null, deanId || null]
       )
-
       const campus = result.rows[0]
+      await writeAudit(client, {
+        action: 'create_campus',
+        performedBy: auth.user.username || auth.user.name,
+        actorRole: auth.user.role,
+        targetId: campus.id,
+        targetType: 'campus',
+        entityLabel: campus.name,
+        campus: campus.name,
+        details: { name: campus.name, code: campus.code },
+      })
       return res.status(201).json({ campus })
     } catch (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ message: 'A campus with this name already exists.' })
+      }
       console.error('Error creating campus:', error)
       return res.status(500).json({ message: 'Error creating campus' })
     } finally {
@@ -64,7 +75,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // PUT: Super Admin only
   if (req.method === 'PUT') {
     const auth = authorize(req, ['admin'])
     if (auth.error) return res.status(auth.status).json({ message: auth.error })
@@ -76,16 +86,26 @@ export default async function handler(req, res) {
 
     const client = await pool.connect()
     try {
+      const existing = await resolveCampus(client, { campusId: id, requireActive: false })
+      if (existing.error) return res.status(existing.status).json({ message: existing.error })
+
       const result = await client.query(
-        `UPDATE campus SET name = COALESCE($1, name), status = COALESCE($2, status) WHERE id = $3 RETURNING id, name, code, dean_id AS "dean", status, created_at AS "createdAt"`,
-        [name, status, id]
+        `UPDATE campus SET name = COALESCE($1, name), status = COALESCE($2, status), updated_at = NOW()
+         WHERE id = $3
+         RETURNING id, name, code, dean_id AS "dean", status, created_at AS "createdAt"`,
+        [name || null, status || null, id]
       )
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ message: 'Campus not found' })
-      }
-
       const campus = result.rows[0]
+      await writeAudit(client, {
+        action: 'update_campus',
+        performedBy: auth.user.username || auth.user.name,
+        actorRole: auth.user.role,
+        targetId: campus.id,
+        targetType: 'campus',
+        entityLabel: campus.name,
+        campus: campus.name,
+        details: { name: campus.name, status: campus.status },
+      })
       return res.status(200).json({ campus })
     } catch (error) {
       console.error('Error updating campus:', error)
@@ -95,7 +115,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // DELETE: Super Admin only
   if (req.method === 'DELETE') {
     const auth = authorize(req, ['admin'])
     if (auth.error) return res.status(auth.status).json({ message: auth.error })
@@ -107,11 +126,24 @@ export default async function handler(req, res) {
 
     const client = await pool.connect()
     try {
-      const result = await client.query('DELETE FROM campus WHERE id = $1 RETURNING id', [id])
-      return res.status(200).json({ success: result.rows.length > 0 })
+      const existing = await resolveCampus(client, { campusId: id, requireActive: false })
+      if (existing.error) return res.status(existing.status).json({ message: existing.error })
+
+      await client.query(`UPDATE campus SET status = 'inactive', updated_at = NOW() WHERE id = $1`, [id])
+      await writeAudit(client, {
+        action: 'update_campus',
+        performedBy: auth.user.username || auth.user.name,
+        actorRole: auth.user.role,
+        targetId: id,
+        targetType: 'campus',
+        entityLabel: existing.campus.name,
+        campus: existing.campus.name,
+        details: { status: 'inactive', deactivated: true },
+      })
+      return res.status(200).json({ success: true, campus: { ...existing.campus, status: 'inactive' } })
     } catch (error) {
-      console.error('Error deleting campus:', error)
-      return res.status(500).json({ message: 'Error deleting campus' })
+      console.error('Error deactivating campus:', error)
+      return res.status(500).json({ message: 'Error deactivating campus' })
     } finally {
       client.release()
     }

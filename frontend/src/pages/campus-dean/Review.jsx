@@ -21,7 +21,7 @@ const CampusDeanReview = () => {
     department: 'Computer Science',
     campus: localStorage.getItem('userCampus') || 'Main Campus',
     academicYear: '2023/2024',
-    pdfUrl: '/api/documents/1',
+    pdfUrl: null,
     status: isReturnRoute ? 'return-for-correction' : 'dean-review',
     submittedAt: '2024-01-15',
     phone: '',
@@ -61,7 +61,7 @@ const CampusDeanReview = () => {
               campus: s.campus || userCampus,
               academicYear: s.academicYear || '2023/2024',
               status: s.applicationStatus || 'dean-review',
-              pdfUrl: '/api/documents/1',
+              pdfUrl: null,
               submittedAt: s.createdAt || new Date().toISOString(),
               phone: s.phone || '',
               email: s.email || '',
@@ -77,6 +77,22 @@ const CampusDeanReview = () => {
         })
         .catch((err) => {
           console.error('Error loading student profile:', err)
+        })
+
+      // Fetch the student's document URL
+      fetch(`/api/documents/student?studentId=${encodeURIComponent(targetId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((docData) => {
+          if (docData?.slip?.downloadUrl) {
+            // Append inline=1 so the backend serves it inline for viewing
+            const viewUrl = docData.slip.downloadUrl + '&inline=1'
+            setApplication((prev) => ({ ...prev, pdfUrl: viewUrl }))
+          }
+        })
+        .catch((err) => {
+          console.error('Error fetching student document:', err)
         })
     }
   }, [targetId, isReturnRoute, userCampus])

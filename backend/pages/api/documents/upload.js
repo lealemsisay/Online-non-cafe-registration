@@ -48,7 +48,7 @@ export default async function handler(req, res) {
 
   // POST: record document upload
   if (req.method === 'POST') {
-    const auth = authorize(req, ['student', 'dean', 'admin'])
+    const auth = authorize(req, ['student', 'dean', 'viceDean', 'admin'])
     if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
     // Students can only upload registration documents while the registration window is open

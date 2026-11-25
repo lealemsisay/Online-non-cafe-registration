@@ -80,10 +80,11 @@ export function authorize(req, roles) {
   if (!token) return { error: 'Authentication required', status: 401 }
   const payload = verifyToken(token)
   if (!payload) return { error: 'Invalid or expired token', status: 401 }
-  if (roles && roles.length > 0 && !roles.includes(payload.role)) {
+  const normalizedRole = payload.role === 'super_admin' ? 'admin' : payload.role
+  if (roles && roles.length > 0 && !roles.includes(payload.role) && !roles.includes(normalizedRole)) {
     return { error: 'Access denied: insufficient permissions', status: 403 }
   }
-  return { user: payload }
+  return { user: { ...payload, role: payload.role } }
 }
 
 export function setCorsHeaders(req, res) {

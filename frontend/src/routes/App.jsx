@@ -39,6 +39,8 @@ import { getAuthUser, clearAuthStorage } from '@/lib/auth'
 const ProtectedRoute = ({ role, children }) => {
   const navigate = useNavigate()
   const user = getAuthUser()
+  // `role` can be a single string or an array of allowed roles
+  const allowedRoles = Array.isArray(role) ? role : [role]
 
   useEffect(() => {
     if (!user.role || !user.token) {
@@ -48,15 +50,15 @@ const ProtectedRoute = ({ role, children }) => {
       navigate('/change-password', { replace: true })
     } else if (user.role === 'student' && !user.profileComplete) {
       navigate('/profile-completion', { replace: true })
-    } else if (user.role !== role) {
-      if (user.role === 'admin' || user.role === 'viceDean') navigate('/admin', { replace: true })
-      else if (user.role === 'dean') navigate('/dean', { replace: true })
+    } else if (!allowedRoles.includes(user.role)) {
+      if (user.role === 'admin') navigate('/admin', { replace: true })
+      else if (user.role === 'dean' || user.role === 'viceDean') navigate('/dean', { replace: true })
       else if (user.role === 'student') navigate('/', { replace: true })
       else navigate('/login', { replace: true })
     }
-  }, [user.role, user.token, user.mustChangePassword, user.profileComplete, role, navigate])
+  }, [user.role, user.token, user.mustChangePassword, user.profileComplete, navigate])
 
-  if (!user.role || !user.token || user.role !== role) {
+  if (!user.role || !user.token || !allowedRoles.includes(user.role)) {
     return null
   }
 
@@ -67,8 +69,8 @@ const ProtectedRoute = ({ role, children }) => {
 const PublicRoute = ({ children }) => {
   const user = getAuthUser()
   if (user.role && user.token) {
-    if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
-    if (user.role === 'dean') return <Navigate to="/dean" replace />
+    if (user.role === 'admin') return <Navigate to="/admin" replace />
+    if (user.role === 'dean' || user.role === 'viceDean') return <Navigate to="/dean" replace />
     if (user.role === 'student') {
       if (user.mustChangePassword) return <Navigate to="/change-password" replace />
       if (!user.profileComplete) return <Navigate to="/profile-completion" replace />
@@ -86,8 +88,8 @@ const OnboardingRoute = ({ step, children }) => {
 
   if (!user.role || !user.token) return <Navigate to="/login" replace />
 
-  if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
-  if (user.role === 'dean') return <Navigate to="/dean" replace />
+  if (user.role === 'admin') return <Navigate to="/admin" replace />
+  if (user.role === 'dean' || user.role === 'viceDean') return <Navigate to="/dean" replace />
 
   if (user.role === 'student') {
     if (step === 'password') {
@@ -110,8 +112,8 @@ const OnboardingRoute = ({ step, children }) => {
 const RootRoute = () => {
   const user = getAuthUser()
   if (!user.role || !user.token) return <Navigate to="/login" replace />
-  if (user.role === 'admin' || user.role === 'viceDean') return <Navigate to="/admin" replace />
-  if (user.role === 'dean') return <Navigate to="/dean" replace />
+  if (user.role === 'admin') return <Navigate to="/admin" replace />
+  if (user.role === 'dean' || user.role === 'viceDean') return <Navigate to="/dean" replace />
   if (user.role === 'student') {
     if (user.mustChangePassword) return <Navigate to="/change-password" replace />
     if (!user.profileComplete) return <Navigate to="/profile-completion" replace />
@@ -232,11 +234,11 @@ const App = () => {
             }
           />
 
-          {/* Campus Dean routes */}
+          {/* Campus Dean + Vice Dean routes */}
           <Route
             path="/dean"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <CampusDeanPortal />
               </ProtectedRoute>
             }
@@ -244,7 +246,7 @@ const App = () => {
           <Route
             path="/dean/review"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <CampusDeanReview />
               </ProtectedRoute>
             }
@@ -252,7 +254,7 @@ const App = () => {
           <Route
             path="/dean/review/:id"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <CampusDeanReview />
               </ProtectedRoute>
             }
@@ -260,7 +262,7 @@ const App = () => {
           <Route
             path="/dean/return/:id"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <CampusDeanReview />
               </ProtectedRoute>
             }
@@ -268,7 +270,7 @@ const App = () => {
           <Route
             path="/dean/reports"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <DeanReports />
               </ProtectedRoute>
             }
@@ -276,7 +278,7 @@ const App = () => {
           <Route
             path="/dean/settings"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <DeanSettings />
               </ProtectedRoute>
             }
@@ -284,8 +286,16 @@ const App = () => {
           <Route
             path="/dean/users"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <DeanUserManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dean/profile"
+            element={
+              <ProtectedRoute role={['dean', 'viceDean']}>
+                <ProfilePage />
               </ProtectedRoute>
             }
           />
@@ -384,7 +394,7 @@ const App = () => {
           <Route
             path="/dean/profile"
             element={
-              <ProtectedRoute role="dean">
+              <ProtectedRoute role={['dean', 'viceDean']}>
                 <ProfilePage />
               </ProtectedRoute>
             }
@@ -402,7 +412,7 @@ const App = () => {
             element={
               getAuthUser().role === 'admin' ? (
                 <Navigate to="/admin/profile" replace />
-              ) : getAuthUser().role === 'dean' ? (
+              ) : getAuthUser().role === 'dean' || getAuthUser().role === 'viceDean' ? (
                 <Navigate to="/dean/profile" replace />
               ) : getAuthUser().role === 'student' ? (
                 <Navigate to="/student/profile" replace />

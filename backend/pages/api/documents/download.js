@@ -14,22 +14,21 @@ export const config = {
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  const { file } = req.query
+  const { file, inline } = req.query
 
   if (!file) {
     res.setHeader('Allow', ['GET'])
     return res.status(400).json({ message: 'file query parameter is required' })
   }
 
-  const auth = authorize(req, ['admin', 'dean', 'student'])
+  const auth = authorize(req, ['admin', 'dean', 'viceDean', 'student'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   const client = await pool.connect()
   try {
-    // Allow admin/dean to download any document, student can only download their own
-    // First, verify the student has this document
+    // Verify document exists in DB
     const docRes = await client.query(
-      `SELECT id, student_id, filename, storedName FROM document_metadata WHERE storedName = $1`,
+      `SELECT id, student_id, filename, path FROM document_metadata WHERE filename = $1`,
       [file]
     )
 
@@ -40,33 +39,50 @@ export default async function handler(req, res) {
     const doc = docRes.rows[0]
     const targetStudentId = doc.student_id
 
-    // If student, check ownership
+    // Student can only download their own document
     if (auth.user.role === 'student') {
       const ownStudentId = auth.user.studentId || auth.user.username || auth.user.id || ''
-      if (targetStudentId.toLowerCase() !== ownStudentId.toLowerCase()) {
+      if (!ownStudentId || targetStudentId.toLowerCase() !== ownStudentId.toLowerCase()) {
         return res.status(403).json({ message: 'Forbidden: Students can only download their own documents.' })
+      }
+    }
+
+    // viceDean campus scope check
+    if (auth.user.role === 'viceDean') {
+      const campusCheck = await client.query(
+        `SELECT campus FROM student WHERE student_id = $1`,
+        [targetStudentId]
+      )
+      if (campusCheck.rows.length > 0) {
+        const studentCampus = (campusCheck.rows[0].campus || '').trim().toLowerCase()
+        const viceDeanCampus = (auth.user.campus || '').trim().toLowerCase()
+        if (viceDeanCampus && studentCampus && viceDeanCampus !== studentCampus) {
+          return res.status(403).json({ message: `Forbidden: Vice Dean can only access documents from their own campus.` })
+        }
       }
     }
 
     // Build the file path
     const filePath = path.join(process.cwd(), 'backend', 'uploads', 'documents', file)
 
-    // Check if file exists
-    const fs = await import('fs')
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: 'Document file not found on disk.' })
     }
 
-    // Set headers for PDF download
     const ext = file.split('.').pop().toLowerCase()
     const mimeType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'
-    const filename = docRes.rows[0].filename || file
+    const originalFilename = doc.filename || file
 
     res.setHeader('Content-Type', mimeType)
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    // Use inline disposition when ?inline=1 is set (for PDF viewer), otherwise attachment (download)
+    if (inline === '1') {
+      res.setHeader('Content-Disposition', `inline; filename="${originalFilename}"`)
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="${originalFilename}"`)
+    }
     res.setHeader('Content-Length', fs.statSync(filePath).size)
+    res.setHeader('Cache-Control', 'private, max-age=300')
 
-    // Stream the file
     const fileStream = fs.createReadStream(filePath)
     fileStream.pipe(res)
   } catch (error) {

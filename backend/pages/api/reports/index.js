@@ -4,8 +4,8 @@ import { authorize, setCorsHeaders } from '@/lib/auth'
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  // Accessible only by Super Admin and Campus Dean
-  const auth = authorize(req, ['admin', 'dean'])
+  // Accessible by Super Admin, Campus Dean, and Vice Dean
+  const auth = authorize(req, ['admin', 'dean', 'viceDean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   const user = auth.user
@@ -29,12 +29,12 @@ export default async function handler(req, res) {
       status = '',
     } = req.query || {}
 
-    // Campus restriction check for Campus Dean
+    // Campus restriction check for Campus Dean and Vice Dean
     let effectiveCampus = null
-    if (userRole === 'dean') {
+    if (userRole === 'dean' || userRole === 'viceDean') {
       if (campus && campus.trim().toLowerCase() !== (userCampus || '').toLowerCase()) {
         return res.status(403).json({
-          message: `Forbidden: Campus Deans are strictly restricted to '${userCampus}'. Cannot access reports for '${campus}'.`,
+          message: `Forbidden: ${userRole === 'viceDean' ? 'Vice Dean' : 'Campus Dean'} is restricted to '${userCampus}'. Cannot access reports for '${campus}'.`,
         })
       }
       effectiveCampus = userCampus
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
     const metricsBaseQuery = `SELECT campus, department, academic_year AS "academicYear", application_status AS "status" FROM student s`
     const metricsParams = []
     let metricsWhere = ''
-    if (userRole === 'dean') {
+    if (userRole === 'dean' || userRole === 'viceDean') {
       metricsParams.push(userCampus || '')
       metricsWhere = ` WHERE LOWER(s.campus) = LOWER($1)`
     }
@@ -188,7 +188,7 @@ export default async function handler(req, res) {
       WHERE 1=1
     `
     const historyParams = []
-    if (userRole === 'dean') {
+    if (userRole === 'dean' || userRole === 'viceDean') {
       historyParams.push(userCampus || '')
       historyQuery += ` AND (campus_scope IS NULL OR LOWER(campus_scope) = LOWER($1))`
     }

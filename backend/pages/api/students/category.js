@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' })
   }
 
-  const auth = authorize(req, ['admin', 'dean'])
+  const auth = authorize(req, ['admin', 'dean', 'viceDean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   try {

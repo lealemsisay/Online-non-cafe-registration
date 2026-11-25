@@ -33,6 +33,13 @@ const Header = ({ isSidebarOpen, onToggleSidebar, user, onLogout }) => {
 
   const getRoleBadge = (role) => {
     switch (role) {
+      case 'viceDean':
+        return (
+          <span className="bg-teal-50 text-teal-900 border border-teal-300 text-xs px-2.5 py-0.5 rounded-full font-bold shadow-2xs flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-teal-600"></span>
+            Vice Dean
+          </span>
+        )
       case 'admin':
         return (
           <span className="bg-purple-50 text-purple-900 border border-purple-300 text-xs px-2.5 py-0.5 rounded-full font-bold shadow-2xs flex items-center gap-1">

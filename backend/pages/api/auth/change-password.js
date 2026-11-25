@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   }
 
   // Accessible by all authenticated roles: student, dean, admin
-  const auth = authorize(req, ['student', 'dean', 'admin'])
+  const auth = authorize(req, ['student', 'dean', 'viceDean', 'admin'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   try {

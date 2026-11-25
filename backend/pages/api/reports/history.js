@@ -4,7 +4,7 @@ import { authorize, setCorsHeaders } from '@/lib/auth'
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  const auth = authorize(req, ['admin', 'dean'])
+  const auth = authorize(req, ['admin', 'dean', 'viceDean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   const user = auth.user

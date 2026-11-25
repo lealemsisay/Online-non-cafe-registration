@@ -41,20 +41,19 @@ const Sidebar = ({ isOpen, onToggle, userRole, userCampus, onLogout }) => {
     { label: 'My Profile', path: '/student/profile', icon: 'user' },
   ]
 
-  let items = studentNavItems
-  if (userRole === 'admin') items = adminNavItems
-  else if (userRole === 'dean') items = deanNavItems
-
-  const handleLinkClick = () => {
-    if (isOpen && onToggle) {
-      onToggle()
-    }
-  }
-
   const roleLabels = {
     admin: 'Super Admin Portal',
     dean: 'Campus Dean Portal',
+    viceDean: 'Vice Dean Portal',
     student: 'Student Self-Service',
+  }
+
+  let items = studentNavItems
+  if (userRole === 'admin') items = adminNavItems
+  else if (userRole === 'dean' || userRole === 'viceDean') items = deanNavItems
+
+  const handleLinkClick = () => {
+    if (isOpen && onToggle) onToggle()
   }
 
   return (

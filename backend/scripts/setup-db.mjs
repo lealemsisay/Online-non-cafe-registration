@@ -28,7 +28,7 @@ async function run() {
 
   const db = new Client({ connectionString: APP_URL })
   await db.connect()
-  const ddl = `
+  const ddlPart1 = `
     CREATE TABLE IF NOT EXISTS app_user (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       username text UNIQUE NOT NULL,
@@ -51,17 +51,6 @@ async function run() {
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS phone text;
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
     ALTER TABLE app_user ADD COLUMN IF NOT EXISTS onboarding_status text NOT NULL DEFAULT 'profile_completion_required';
-
-    UPDATE app_user u
-       SET onboarding_status = CASE
-         WHEN EXISTS (
-           SELECT 1 FROM student s
-           WHERE LOWER(s.student_id) = LOWER(u.username) AND s.profile_complete = true
-         ) THEN 'completed'
-         WHEN u.must_change_password = true THEN 'password_change_required'
-         ELSE 'profile_completion_required'
-       END
-     WHERE u.role = 'student';
 
     ALTER TABLE app_user DROP CONSTRAINT IF EXISTS app_user_onboarding_status_check;
     ALTER TABLE app_user ADD CONSTRAINT app_user_onboarding_status_check
@@ -112,6 +101,25 @@ async function run() {
     ALTER TABLE student ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false;
     ALTER TABLE student ADD COLUMN IF NOT EXISTS archived_at timestamptz;
     ALTER TABLE student ADD COLUMN IF NOT EXISTS archived_by text;
+  `
+  await db.query(ddlPart1)
+  console.log('Core tables created/verified')
+
+  // Run the student-referencing UPDATE only after student table is guaranteed to exist
+  await db.query(`
+    UPDATE app_user u
+       SET onboarding_status = CASE
+         WHEN EXISTS (
+           SELECT 1 FROM student s
+           WHERE LOWER(s.student_id) = LOWER(u.username) AND s.profile_complete = true
+         ) THEN 'completed'
+         WHEN u.must_change_password = true THEN 'password_change_required'
+         ELSE 'profile_completion_required'
+       END
+     WHERE u.role = 'student'
+  `)
+
+  const ddl = `
 
     CREATE TABLE IF NOT EXISTS campus (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

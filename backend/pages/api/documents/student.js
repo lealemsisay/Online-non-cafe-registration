@@ -20,12 +20,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ message: 'studentId query parameter is required' })
   }
 
-  const auth = authorize(req, ['admin', 'dean', 'student'])
+  const auth = authorize(req, ['admin', 'dean', 'viceDean', 'student'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   const client = await pool.connect()
   try {
-    // Allow admin/dean to view any student's slip, student can only view their own
+    // Allow admin/dean/viceDean to view student slips (viceDean: campus-scoped), student can only view their own
     let targetStudentId = studentId
     if (auth.user.role === 'student') {
       // Student can only view their own slip; use their username/studentId from token
@@ -35,6 +35,19 @@ export default async function handler(req, res) {
       }
       if (targetStudentId.toLowerCase() !== ownStudentId.toLowerCase()) {
         return res.status(403).json({ message: 'Forbidden: Students can only view their own registration slip.' })
+      }
+    } else if (auth.user.role === 'viceDean') {
+      // viceDean can only access students from their own campus
+      const campusCheck = await client.query(
+        `SELECT campus FROM student WHERE student_id = $1`,
+        [targetStudentId]
+      )
+      if (campusCheck.rows.length > 0) {
+        const studentCampus = (campusCheck.rows[0].campus || '').trim().toLowerCase()
+        const viceDeanCampus = (auth.user.campus || '').trim().toLowerCase()
+        if (!viceDeanCampus || !studentCampus || viceDeanCampus !== studentCampus) {
+          return res.status(403).json({ message: `Forbidden: Vice Dean can only access students from their own campus (${auth.user.campus}).` })
+        }
       }
     }
 

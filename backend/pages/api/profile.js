@@ -7,7 +7,7 @@ export default async function handler(req, res) {
 
     // GET: Retrieve authenticated user or student profile
     if (req.method === 'GET') {
-      const auth = authorize(req, ['student', 'dean', 'admin'])
+      const auth = authorize(req, ['student', 'dean', 'viceDean', 'admin'])
       if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
       // Students may only retrieve their own profile.
@@ -168,7 +168,7 @@ export default async function handler(req, res) {
 
   // PUT / PATCH: Update authenticated user profile
   if (req.method === 'PUT' || req.method === 'PATCH') {
-    const auth = authorize(req, ['student', 'dean', 'admin'])
+    const auth = authorize(req, ['student', 'dean', 'viceDean', 'admin'])
     if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
     const client = await pool.connect()

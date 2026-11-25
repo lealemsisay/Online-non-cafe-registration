@@ -5,7 +5,6 @@ import Icon from '@/components/icons/Icon'
 import ActionMenu from '@/components/common/ActionMenu'
 import ConfirmModal from '@/components/common/ConfirmModal'
 import StudentDetailModal from '@/components/students/StudentDetailModal'
-import { PDFViewer } from '@/components/pdf-viewer/PDFViewer'
 
 const StudentApplicationManagement = () => {
   const [applications, setApplications] = useState([])
@@ -15,19 +14,13 @@ const StudentApplicationManagement = () => {
   const [actionMessage, setActionMessage] = useState(null)
   const [error, setError] = useState(null)
   const [selectedApps, setSelectedApps] = useState([])
-  const [isExporting, setIsExporting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [detailStudentId, setDetailStudentId] = useState(null)
   const [detailInitialData, setDetailInitialData] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deletingTarget, setDeletingTarget] = useState(null)
   const [resetTargetStudent, setResetTargetStudent] = useState(null)
-  const [exportingTarget, setExportingTarget] = useState(null)
-
-  const userRole = localStorage.getItem('userRole')
-  const isSuperAdmin = userRole === 'super_admin'
-  const isDocumentAccessible = userRole === 'super_admin' || userRole === 'admin'
+  const [resetPasswordInput, setResetPasswordInput] = useState('Student@Dilla2026!')
 
   const loadApplications = () => {
     const token = localStorage.getItem('token')
@@ -161,23 +154,43 @@ const StudentApplicationManagement = () => {
     setIsDeleting(true)
     setError(null)
     const token = localStorage.getItem('token')
-    const id = deleteTarget.studentId || deleteTarget.id
+    const targets =
+      deleteTarget === 'bulk'
+        ? applications.filter((a) => selectedApps.includes(a.id))
+        : [deleteTarget]
+
+    const deletedIds = []
+    const failedIds = []
 
     try {
-      const res = await fetch(`/api/users?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-
-      if (res.ok) {
-        setActionMessage(`Student record '${deleteTarget.studentName}' (${id}) deleted successfully.`)
-        setApplications((prev) => prev.filter((a) => a.studentId !== id && a.id !== id))
-        setDeleteTarget(null)
-      } else {
-        const d = await res.json()
-        setError(d.message || 'Failed to delete student record.')
-        setDeleteTarget(null)
+      for (const target of targets) {
+        const id = target.studentId || target.id
+        const res = await fetch(`/api/users?id=${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        if (res.ok) {
+          deletedIds.push(id)
+        } else {
+          failedIds.push(id)
+        }
       }
+
+      if (deletedIds.length > 0) {
+        setApplications((prev) =>
+          prev.filter((a) => !deletedIds.includes(a.studentId) && !deletedIds.includes(a.id))
+        )
+        setSelectedApps((prev) => prev.filter((id) => !deletedIds.includes(id)))
+        setActionMessage(
+          deletedIds.length === 1
+            ? `Student record '${targets[0]?.studentName || deletedIds[0]}' deleted successfully.`
+            : `${deletedIds.length} selected student records deleted successfully.`
+        )
+      }
+      if (failedIds.length > 0) {
+        setError(`Failed to delete ${failedIds.length} selected record${failedIds.length === 1 ? '' : 's'}.`)
+      }
+      setDeleteTarget(null)
     } catch (e) {
       setError('Network error while deleting student record.')
       setDeleteTarget(null)
@@ -186,45 +199,85 @@ const StudentApplicationManagement = () => {
     }
   }
 
-  const handleExportSelected = async () => {
-    if (selectedApps.length === 0 || !isSuperAdmin) return
-    setIsExporting(true)
-    setError(null)
-    const token = localStorage.getItem('token')
-
-    try {
-      for (const id of selectedApps) {
-        const res = await fetch(`/api/students/export-document?id=${id}`, {
-          method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        })
-
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success) {
-            const { student } = data
-            const blob = new Blob([], { type: 'text/csv;charset=utf-8;' })
-            const url = window.URL.createObjectURL(blob)
-            window.open(url, '_blank')
-            setActionMessage(`Exported student record for ${student.studentName}`)
-          } else {
-            setError(data.message || 'Failed to export student data')
-          }
-        } else {
-          const d = await res.json()
-          setError(d.message || 'Failed to export document')
-        }
-      }
-    } catch (e) {
-      setError('Network error while exporting selected students')
-    } finally {
-      setIsExporting(false)
-    }
+  const escapeCsvCell = (value) => {
+    const text = String(value ?? '')
+    if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`
+    return text
   }
 
-  const handleDeleteSelected = () => {
-    if (selectedApps.length === 0 || !isSuperAdmin) return
-    setDeleteTarget(selectedApps[0])
+  const escapeHtmlCell = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  }
+
+  const getSelectedExportTable = () => {
+    const selected = filteredApplications.filter((app) => selectedApps.includes(app.id))
+    const headers = [
+      'Number',
+      'Student ID',
+      'Student Name',
+      'Gender',
+      'Phone',
+      'Email',
+      'Department',
+      'Program',
+      'Year of Study',
+      'Campus',
+      'Academic Year',
+      'Status',
+      'Finding',
+      'Submitted At',
+    ]
+    const rows = selected.map((app, index) => [
+      index + 1,
+      app.studentId,
+      app.studentName,
+      app.gender,
+      app.phone,
+      app.email,
+      app.department,
+      app.program,
+      app.yearOfStudy,
+      app.campus,
+      app.academicYear,
+      app.status,
+      app.finding,
+      app.submittedAt,
+    ])
+    return { selected, headers, rows }
+  }
+
+  const handleExportSelected = (format) => {
+    if (selectedApps.length === 0) return
+    const { selected, headers, rows } = getSelectedExportTable()
+    if (selected.length === 0) return
+
+    const stamp = new Date().toISOString().slice(0, 10)
+    if (format === 'csv') {
+      const csv = [headers, ...rows].map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+      downloadBlob(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }), `student_applications_${stamp}.csv`)
+    } else {
+      const table = [headers, ...rows]
+        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtmlCell(cell)}</td>`).join('')}</tr>`)
+        .join('')
+      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table>${table}</table></body></html>`
+      downloadBlob(new Blob([html], { type: 'application/vnd.ms-excel' }), `student_applications_${stamp}.xls`)
+    }
+    setActionMessage(
+      `Exported ${selected.length} selected application${selected.length === 1 ? '' : 's'} as ${format === 'csv' ? 'CSV' : 'Excel'}.`
+    )
   }
 
   const filteredApplications = applications.filter((app) => {
@@ -303,7 +356,7 @@ const StudentApplicationManagement = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <Button
             onClick={loadApplications}
             variant="outline"
@@ -312,49 +365,36 @@ const StudentApplicationManagement = () => {
             <Icon name="refresh" className="w-4 h-4 text-dillaGreen" />
             Refresh Records
           </Button>
-          {/* Select All Checkbox for Super Admin */}
-          {isSuperAdmin && (
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={selectedApps.length === applications.length && selectedApps.length > 0}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedApps(applications.map((a) => a.id))
-                  } else {
-                    setSelectedApps([])
-                  }
-                }}
-                className="w-4 h-4 rounded border border-slate-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
-              />
-              <span className="text-xs text-slate-700">Select All</span>
-            </div>
-          )}
-          {/* Export/Delete Buttons for Super Admin */}
-          {isSuperAdmin && selectedApps.length > 0 && (
-            <div className="flex items-center gap-2">
+          {selectedApps.length > 0 && (
+            <>
+              <span className="text-xs font-semibold text-slate-600">
+                {selectedApps.length} selected
+              </span>
               <Button
                 variant="outline"
-                onClick={() => setExportingTarget(selectedApps[0])}
+                onClick={() => handleExportSelected('csv')}
                 className="text-xs font-semibold"
               >
-                <Icon name="download" className="w-3.5 h-3.5" /> Export
+                <Icon name="download" className="w-3.5 h-3.5" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleExportSelected('excel')}
+                className="text-xs font-semibold"
+              >
+                <Icon name="download" className="w-3.5 h-3.5" />
+                Export Excel
               </Button>
               <Button
                 variant="danger"
-                onClick={() => setDeleteTarget(selectedApps.length > 0 ? selectedApps[0] : null)}
+                onClick={() => setDeleteTarget('bulk')}
                 className="text-xs font-semibold"
               >
-                <Icon name="trash" className="w-3.5 h-3.5" /> Delete
+                <Icon name="trash" className="w-3.5 h-3.5" />
+                Delete Selected
               </Button>
-            </div>
-          )}
-          {isSuperAdmin && selectedApps.length > 0 && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-xs text-slate-600">
-                {selectedApps.length} {selectedApps.length > 1 ? 'selected' : 'selected'}
-              </span>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -412,24 +452,28 @@ const StudentApplicationManagement = () => {
           <thead className="bg-[#f1f5f3]">
             <tr>
               <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
+                Number
+              </th>
+              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={selectedApps.length === applications.length && selectedApps.length > 0}
+                    checked={
+                      filteredApplications.length > 0 &&
+                      filteredApplications.every((a) => selectedApps.includes(a.id))
+                    }
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedApps(applications.map((a) => a.id))
+                        setSelectedApps(filteredApplications.map((a) => a.id))
                       } else {
                         setSelectedApps([])
                       }
                     }}
                     className="w-4 h-4 rounded border border-slate-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-dillaGreen/30"
+                    aria-label="Select all"
                   />
                   <span className="text-xs text-slate-700">Select All</span>
                 </div>
-              </th>
-              <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
-                Number
               </th>
               <th className="px-4 py-3.5 text-left text-xs font-bold text-dillaDarkGreen uppercase tracking-wider">
                 Student ID
@@ -538,7 +582,6 @@ const StudentApplicationManagement = () => {
         </table>
       </div>
 
-      {/* Student Detail Dossier Modal */}
       <StudentDetailModal
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
@@ -552,24 +595,15 @@ const StudentApplicationManagement = () => {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDeleteApplication}
         isLoading={isDeleting}
-        title="Delete Student Application"
-        description="You are about to permanently delete the application record. All associated data including documents, dean reviews, and approval history will be permanently removed."
-        confirmLabel="Delete Record"
+        title={deleteTarget === 'bulk' ? 'Delete Selected Applications' : 'Delete Student Application'}
+        description={
+          deleteTarget === 'bulk'
+            ? `You are about to permanently delete ${selectedApps.length} selected application record${selectedApps.length === 1 ? '' : 's'}. All associated data including documents, dean reviews, and approval history will be permanently removed.`
+            : 'You are about to permanently delete the application record. All associated data including documents, dean reviews, and approval history will be permanently removed.'
+        }
+        confirmLabel={deleteTarget === 'bulk' ? 'Delete Selected' : 'Delete Record'}
         danger
       />
-
-      {/* Export/Delete Modals */}
-      {isDocumentAccessible && (
-        <ConfirmModal
-          isOpen={!!exportingTarget}
-          onClose={() => setExportingTarget(null)}
-          onConfirm={handleExportSelected}
-          isLoading={isExporting}
-          title="Export Registration Document"
-          description="This will export the student's registration slip PDF. The file will be downloaded to your browser."
-          confirmLabel="Export Document"
-        />
-      )}
 
       {/* Password Reset Modal */}
       {resetTargetStudent && (
@@ -617,13 +651,6 @@ const StudentApplicationManagement = () => {
         </div>
       )}
 
-      {/* Student Detail Dossier Modal */}
-      <StudentDetailModal
-        isOpen={showDetailModal}
-        onClose={() => setShowDetailModal(false)}
-        studentId={detailStudentId}
-        initialData={detailInitialData}
-      />
     </div>
   )
 }

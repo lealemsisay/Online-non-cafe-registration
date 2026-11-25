@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
   // Accessible by Super Admin and Campus Dean
-  const auth = authorize(req, ['admin', 'dean'])
+  const auth = authorize(req, ['admin', 'dean', 'viceDean'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   if (req.method !== 'GET') {

@@ -1,13 +1,67 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Icon from '@/components/icons/Icon'
 
 const PDFViewer = ({ src, loading, error: externalError, onDownload, filename = 'document.pdf' }) => {
   const [internalError, setInternalError] = useState(false)
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [fetching, setFetching] = useState(false)
+  const prevBlobUrl = useRef(null)
+
+  // When `src` changes, fetch the PDF with the Authorization header and create a Blob URL.
+  // This is required because <iframe src> cannot send custom headers, so a protected
+  // endpoint would return 401 if we used the raw URL directly.
+  useEffect(() => {
+    // Reset state when src changes
+    setBlobUrl(null)
+    setInternalError(false)
+
+    if (!src) return
+
+    // Revoke the previous blob URL to avoid memory leaks
+    if (prevBlobUrl.current) {
+      URL.revokeObjectURL(prevBlobUrl.current)
+      prevBlobUrl.current = null
+    }
+
+    setFetching(true)
+    const token = localStorage.getItem('token')
+
+    fetch(src, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.blob()
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        prevBlobUrl.current = url
+        setBlobUrl(url)
+      })
+      .catch((err) => {
+        console.error('PDFViewer fetch error:', err)
+        setInternalError(true)
+      })
+      .finally(() => {
+        setFetching(false)
+      })
+  }, [src])
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (prevBlobUrl.current) {
+        URL.revokeObjectURL(prevBlobUrl.current)
+      }
+    }
+  }, [])
+
+  const isLoading = loading || fetching
   const isError = externalError || internalError
 
   return (
     <div className="relative group rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
-      {loading ? (
+      {isLoading ? (
         <div className="h-72 bg-slate-50 flex flex-col items-center justify-center text-slate-500 gap-2">
           <div className="w-8 h-8 border-3 border-dillaGreen border-t-transparent rounded-full animate-spin"></div>
           <span className="text-xs font-semibold">Loading official document...</span>
@@ -52,7 +106,7 @@ const PDFViewer = ({ src, loading, error: externalError, onDownload, filename = 
             <div className="flex items-center gap-2">
               {src && (
                 <a
-                  href={src}
+                  href={blobUrl || src}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-dillaGreen hover:text-dillaDarkGreen font-semibold hover:underline inline-flex items-center gap-1 text-[11px]"
@@ -64,7 +118,7 @@ const PDFViewer = ({ src, loading, error: externalError, onDownload, filename = 
             </div>
           </div>
           <iframe
-            src={src}
+            src={blobUrl || src}
             title={filename}
             className="w-full h-80 sm:h-96 border-none bg-white"
             onError={() => setInternalError(true)}

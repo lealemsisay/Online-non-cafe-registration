@@ -5,8 +5,8 @@ import { createNotification } from '@/lib/notifications'
 export default async function handler(req, res) {
   if (setCorsHeaders(req, res)) return
 
-  // Accessible by Campus Dean and Super Admin
-  const auth = authorize(req, ['dean', 'admin'])
+  // Accessible by Campus Dean, Vice Dean, and Super Admin
+  const auth = authorize(req, ['dean', 'viceDean', 'admin'])
   if (auth.error) return res.status(auth.status).json({ message: auth.error })
 
   const user = auth.user
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       `
       const params = []
 
-      if (userRole === 'dean') {
+      if (userRole === 'dean' || userRole === 'viceDean') {
         params.push(userCampus || '')
         query += ` AND LOWER(campus) = LOWER($${params.length})`
       } else if (userRole === 'admin' && campus) {
